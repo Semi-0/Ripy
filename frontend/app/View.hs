@@ -1,14 +1,15 @@
 {-# LANGUAGE OverloadedStrings, FlexibleContexts #-}
 module View where
 
+import Control.Monad.IO.Class (liftIO)
 import Data.Map (Map)
 import qualified Data.Map as Map
 import Data.Text (Text)
-import qualified Data.Text as T
 import Reflex.Dom
+import qualified Bindings as B
 import Protocol (Movie(..))
 
-data Intent = SelectMovie Text | Start | Stop | SeekTo Text | SetLocalVolume Text | Enable | Fullscreen
+data Intent = SelectMovie Text Text | Start | Stop | SeekTo Text | SetLocalVolume Text | Enable | Fullscreen
   deriving (Eq, Show)
 data Ui = Ui
   { catalog :: [Movie], selected :: Text, connectionLabel :: Text, ready :: Bool
@@ -45,7 +46,7 @@ movieView ui = elAttr "main" ("data-reflex-ready" =: "true") $ do
     (selector, _) <- selectElement config $ dyn_ $ ffor options $ \entries ->
       mapM_ (\(ident, title) -> elAttr "option" ("value" =: ident) $ text title) (Map.toList entries)
     elAttr "p" (("id" =: "connection") <> ("role" =: "status")) $ dynText $ connectionLabel <$> ui
-    pure $ fmapMaybe (fmap (pure . SelectMovie) . nonempty) $ _selectElement_change selector
+    pure $ attachPromptlyDynWith (\previous requested -> [SelectMovie previous requested]) selection $ _selectElement_change selector
   elDynAttr "p" ((\u -> ("id" =: "empty") <> conditional (not $ null $ catalog u) ("hidden" =: "")) <$> ui) $
     text "No movies yet. Add an MP4 to media/, restart the server, and refresh."
   actions <- elAttr "section" (("id" =: "player") <> ("aria-label" =: "Movie player and controls")) $ do
@@ -91,6 +92,5 @@ controls ui = elClass "section" "controls" $ do
   pure $ mergeWith (++) [[Start] <$ domEvent Click play, [Stop] <$ domEvent Click pause,
     pure . SeekTo <$> _inputElement_input seek, pure . SetLocalVolume <$> _inputElement_input volume]
 
-nonempty :: Text -> Maybe Text
-nonempty value | T.null value = Nothing
-nonempty value = Just value
+restoreMovieSelection :: MonadWidget t m => Event t Text -> m ()
+restoreMovieSelection = performEvent_ . fmap (liftIO . B.setText "movies" "value" . B.toJS)

@@ -50,6 +50,7 @@ app = do
         }
       outgoing = mergeWith (++) [commands reactions, playerMediaCommands player]
   controlVideo videoInputs
+  restoreMovieSelection $ reactionEvent restoreSelectionReaction reactions
   transmitCommands roomLink outgoing
 
 enableReaction :: Reaction -> Maybe ()
@@ -60,6 +61,11 @@ enableReaction reaction = case reaction of
 fullscreenReaction :: Reaction -> Maybe ()
 fullscreenReaction reaction = case reaction of
   ToggleFullscreen -> Just ()
+  _ -> Nothing
+
+restoreSelectionReaction :: Reaction -> Maybe Text
+restoreSelectionReaction reaction = case reaction of
+  RestoreMovieSelection value -> Just value
   _ -> Nothing
 
 volumeReaction :: Reaction -> Maybe Double
