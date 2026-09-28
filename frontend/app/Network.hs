@@ -1,6 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 module Network where
 
+import Control.Monad.Fix (MonadFix)
 import Data.Text (Text)
 import qualified Data.Text as T
 import Text.Read (readMaybe)
@@ -23,7 +24,7 @@ data Reaction
 
 data SnapshotInput = ResetSnapshots | ReceiveSnapshot RoomState
 
-acceptSnapshots :: (Reflex t, MonadHold t m)
+acceptSnapshots :: (Reflex t, MonadHold t m, MonadFix m)
   => Event t () -> Event t RoomState
   -> m (Dynamic t (Maybe RoomState), Event t RoomState)
 acceptSnapshots resets incoming = do
