@@ -10,7 +10,7 @@ import Data.Text (Text)
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as TE
 import Text.Read (readMaybe)
-import Reflex.Dom
+import Reflex.Dom hiding (Pause)
 import qualified Bindings as B
 import Connection
 import Model (acceptSnapshot, clampPosition)

@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { chromium } from 'playwright';
 import { buildServer } from '../src/server.js';
+import { observeSockets, checkReflexEdges } from './reflex-edges.js';
 
 const directory = await mkdtemp(join(tmpdir(), 'cinema-browser-'));
 const errors = [];
@@ -176,6 +177,11 @@ try {
   }
   browser = await chromium.launch(launchOptions);
   const context = await browser.newContext({ viewport: { width: 1100, height: 1000 } });
+  if (process.env.FRONTEND_PATH === '/reflex/') {
+    await observeSockets(context);
+  } else {
+    // The fallback browser suite does not need Reflex-specific protocol injection.
+  }
   const a = await context.newPage();
   const b = await context.newPage();
   for (const page of [a, b]) {
@@ -184,6 +190,11 @@ try {
     await until(page, () => !document.querySelector('#movies').disabled);
   }
   await runChecks(a, b);
+  if (process.env.FRONTEND_PATH === '/reflex/') {
+    await checkReflexEdges(a);
+  } else {
+    // Keep the original JavaScript frontend available during migration.
+  }
   assert.deepEqual(errors, []);
   console.log('PASS no browser JavaScript errors');
 } finally {

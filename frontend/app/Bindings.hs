@@ -56,6 +56,7 @@ foreign import javascript unsafe
 foreign import javascript unsafe "$1.readyState === 1" socketOpen :: JSVal -> IO Bool
 foreign import javascript unsafe "$1.send($2)" socketSend :: JSVal -> JS.JSString -> IO ()
 foreign import javascript unsafe "$1.close()" socketClose :: JSVal -> IO ()
+foreign import javascript unsafe "$1.onopen = null; $1.onmessage = null; $1.onclose = null; $1.onerror = null;" unwatchSocket :: JSVal -> IO ()
 
 connectSocket :: IO () -> (Text -> IO ()) -> IO () -> IO JSVal
 connectSocket opened message closed = mdo
@@ -63,6 +64,7 @@ connectSocket opened message closed = mdo
   onOpen <- asyncCallback opened
   onMessage <- asyncCallback1 $ message . fromJS . stringValue
   onClose <- asyncCallback $ do
+    unwatchSocket socket
     releaseCallback onOpen
     releaseCallback onMessage
     releaseCallback onClose

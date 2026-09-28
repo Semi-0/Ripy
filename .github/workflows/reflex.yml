@@ -41,7 +41,7 @@ jobs:
           FRONTEND_PATH: /reflex/
           BROWSER_CHANNEL: chromium
       - uses: actions/upload-artifact@v4
-        if: always()
+        if: always() && hashFiles('frontend-dist/build.json') != ''
         with:
           name: reflex-frontend-${{ github.sha }}
           path: frontend-dist/
