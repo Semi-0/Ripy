@@ -3,9 +3,35 @@ name: ripy-frontend
 version: 0.1.0.0
 build-type: Simple
 
+library
+  exposed-modules: Protocol, Model
+  hs-source-dirs: src
+  build-depends: base >=4.12 && <5, aeson, bytestring, text
+  default-language: Haskell2010
+  ghc-options: -Wall
+
 executable ripy-frontend
   main-is: Main.hs
   hs-source-dirs: app
-  build-depends: base >=4.12 && <5, reflex-dom, text
+  other-modules: Bindings, Connection, Player, View
+  build-depends: base >=4.12 && <5, ripy-frontend, reflex-dom, reflex,
+                text, bytestring, aeson, containers, ghcjs-base, transformers
+  if !impl(ghcjs)
+    buildable: False
   default-language: Haskell2010
   ghc-options: -Wall
+
+test-suite model-tests
+  type: exitcode-stdio-1.0
+  main-is: Spec.hs
+  hs-source-dirs: test
+  build-depends: base, ripy-frontend, aeson, bytestring, text
+  default-language: Haskell2010
+
+executable protocol-check
+  main-is: Compatibility.hs
+  hs-source-dirs: test
+  build-depends: base, ripy-frontend, aeson, bytestring, text
+  if impl(ghcjs)
+    buildable: False
+  default-language: Haskell2010

@@ -4,6 +4,7 @@ frontend-dist/
 frontend-dist.previous/
 .reflex-stage-*/
 frontend-result
+frontend-native
 dist-newstyle/
 test-results/
 media/*

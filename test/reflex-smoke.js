@@ -11,7 +11,7 @@ try {
   page.on('pageerror', error => errors.push(error.message));
   await page.goto(`${url}/reflex/`);
   await page.locator('[data-reflex-ready="true"]').waitFor();
-  assert.match(await page.locator('h1').textContent(), /Reflex build verified/);
+  assert.match(await page.locator('h1').textContent(), /cloud cinema/);
   assert.deepEqual(errors, []);
   console.log('Compiled Reflex browser page served by Node only: PASS');
 } finally {

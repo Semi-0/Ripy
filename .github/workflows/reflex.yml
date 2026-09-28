@@ -24,12 +24,24 @@ jobs:
       - run: npm test
       - name: Compile browser Haskell
         run: nix-build default.nix -A ghcjs.ripy-frontend -o frontend-result
+      - name: Native Haskell model tests and protocol checker
+        run: nix-build default.nix -A ghc.ripy-frontend -o frontend-native
+      - name: Cross-language protocol compatibility
+        run: node test/protocol-compatibility.js frontend-native/bin/protocol-check
       - name: Package browser assets
         run: node scripts/package-frontend.js frontend-result/bin/ripy-frontend.jsexe
       - run: npx playwright install --with-deps chromium
       - name: Verify compiled page through Fastify
         run: node test/reflex-smoke.js
+      - name: Install media test generator
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg
+      - name: Two-browser Reflex parity
+        run: node test/browser-check.js
+        env:
+          FRONTEND_PATH: /reflex/
+          BROWSER_CHANNEL: chromium
       - uses: actions/upload-artifact@v4
+        if: always()
         with:
           name: reflex-frontend-${{ github.sha }}
           path: frontend-dist/

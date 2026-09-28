@@ -149,6 +149,15 @@ async function runChecks(a, b) {
   assert.equal(await a.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
   await a.screenshot({ path: 'test-results/mobile.png', fullPage: true });
   console.log('PASS rapid movie selection and narrow-screen layout');
+  await a.click('#fullscreen');
+  await until(a, () => document.fullscreenElement?.id === 'player');
+  assert.equal(await a.locator('#pause').isVisible(), true);
+  await a.click('#fullscreen');
+  await until(a, () => document.fullscreenElement === null);
+  await a.locator('video').dblclick();
+  await until(a, () => document.fullscreenElement?.id === 'player');
+  await a.evaluate(() => document.exitFullscreen());
+  console.log('PASS fullscreen entry, shared controls, exit and double-click');
 }
 
 try {
@@ -159,13 +168,19 @@ try {
   await copyFile(join(directory, 'test.mp4'), join(directory, 'alternate.mp4'));
   app = await buildServer({ mediaDirectory: directory });
   const address = await app.listen({ host: '127.0.0.1', port: 0 });
-  browser = await chromium.launch({ channel: 'chrome', headless: true, args: ['--autoplay-policy=no-user-gesture-required'] });
+  const launchOptions = { headless: true, args: ['--autoplay-policy=no-user-gesture-required'] };
+  if (process.env.BROWSER_CHANNEL === 'chromium') {
+    // CI uses Playwright's installed Chromium; local runs retain system Chrome.
+  } else {
+    launchOptions.channel = 'chrome';
+  }
+  browser = await chromium.launch(launchOptions);
   const context = await browser.newContext({ viewport: { width: 1100, height: 1000 } });
   const a = await context.newPage();
   const b = await context.newPage();
   for (const page of [a, b]) {
     page.on('pageerror', (error) => errors.push(error.message));
-    await page.goto(address);
+    await page.goto(new URL(process.env.FRONTEND_PATH ?? '/', address).href);
     await until(page, () => !document.querySelector('#movies').disabled);
   }
   await runChecks(a, b);
