@@ -3,7 +3,6 @@ import assert from 'node:assert/strict';
 import { createEmptyRoom, transitionRoom } from '../src/room.js';
 import { decodeAndValidate } from '../src/protocol.js';
 import { positionAt } from '../src/timeline.js';
-import { isNewerState, clampPosition, clockSample, bestClockSample } from '../public/timeline.js';
 
 const catalog = new Map([['movie.mp4', {}], ['second.mp4', {}]]);
 const empty = createEmptyRoom('epoch-a', 1000);
@@ -28,6 +27,8 @@ test('select, play, seek, pause, resume, and replacement preserve timeline seman
   assert.equal(replacement.mode, 'paused');
   assert.equal(replacement.revision, 7);
   assert.equal(selected.positionSeconds, 0, 'previous states are not mutated');
+  assert.equal(positionAt(empty, 2000), 0);
+  assert.throws(() => positionAt({ mode: 'invalid' }, 0));
 });
 
 test('server arrival order determines concurrent control outcomes', () => {
@@ -60,24 +61,4 @@ test('protocol rejects malformed, unexpected, and nonfinite fields', () => {
     { type: 'pause', reason: 'ended' }]) {
     assert.deepEqual(decodeAndValidate(JSON.stringify(message)), message);
   }
-});
-
-test('snapshots accept fresh epochs and reject old or duplicate revisions', () => {
-  assert.equal(isNewerState(null, selected), true);
-  assert.equal(isNewerState(selected, empty), false);
-  assert.equal(isNewerState(selected, selected), false);
-  assert.equal(isNewerState(selected, { ...empty, epoch: 'epoch-b' }), true);
-  assert.equal(isNewerState(selected, { ...selected, revision: 2 }), true);
-});
-
-test('clock estimation chooses lowest RTT and clamps player bounds', () => {
-  const sample = clockSample(1000, 1100, 2050);
-  assert.deepEqual(sample, { roundTrip: 100, offset: 1000 });
-  assert.deepEqual(bestClockSample([{ roundTrip: 400, offset: 1200 }, sample]), sample);
-  assert.throws(() => bestClockSample([]));
-  assert.equal(clampPosition(100, 60), 60);
-  assert.equal(clampPosition(-5, 60), 0);
-  assert.equal(clampPosition(5, NaN), 0);
-  assert.equal(positionAt(empty, 2000), 0);
-  assert.throws(() => positionAt({ mode: 'invalid' }, 0));
 });

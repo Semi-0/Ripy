@@ -1,25 +1,40 @@
-# Cloud Cinema — local prototype
+# Ripy — cloud cinema
 
 A small movie website you own: Fastify serves MP4 files, and one shared
 WebSocket room coordinates two browser players. Either viewer can select a
-movie, play, pause, or seek. Volume remains local.
+movie, play, pause, or seek. Volume remains local. The frontend is written in
+Haskell with Reflex-DOM and compiled to browser JavaScript by Linux CI. The
+server stays JavaScript; Node.js alone runs the installed application.
 
 ## Run
 
-Requires Node.js 22 or newer and npm.
+Requires Node.js 22 or newer, npm, and a compiled frontend artifact. Haskell,
+GHCJS and Nix are not needed on your Mac or on the serving machine.
 
 ```sh
 git clone https://github.com/Semi-0/Ripy.git
 cd Ripy
 npm ci
+# Download and install the successful CI artifact as described below.
 npm start
 ```
 
-In the original Codex workspace, use the existing `prototype/` directory instead
-of cloning. Paths below are relative to the repository root unless noted.
+The existing local checkout is `/Users/linpandi/Ripy`. During migration, use
+branch `codex/reflex-frontend`; `main` remains unchanged for review. Follow
+[frontend/README.md](frontend/README.md) to download the artifact for a full
+commit SHA and install it with:
+
+```sh
+node scripts/install-frontend.js DOWNLOAD_DIRECTORY COMMIT_SHA
+```
+
+The installer stages and verifies the artifact before replacing assets and
+retains the preceding installation in `frontend-dist.previous/`. Without an
+installed build, `/` returns installation instructions with HTTP 503. Runtime
+does not build Haskell automatically. Paths below are relative to this checkout.
 
 Open **http://localhost:3000** in two browser windows. Add your own
-browser-compatible MP4 files to `media/` (`prototype/media/` in the original workspace), restart the server, and
+browser-compatible MP4 files to `media/`, restart the server, and
 refresh both windows. H.264 video with AAC audio in an MP4 container is a useful
 starting point. The server does not convert files. It reads the catalog once at
 startup, including only immediate regular `.mp4` files (not symlinks).
@@ -61,10 +76,15 @@ Browser A ◀── commands/state ──▶ Shared room ◀── commands/stat
 - `src/room.js`: pure room transitions, with time supplied by the caller.
 - `src/protocol.js`: validates incoming commands and produces precise errors.
 - `src/server.js`: HTTP delivery and WebSocket effects; owns the in-memory room.
-- `public/timeline.js`: shared pure position, revision, and clock calculations.
-- `public/connection.js`: transport, clock sampling, and reconnection.
-- `public/player.js`: browser media effects, cancellation, drift, and recovery.
-- `public/app.js`: page composition and explicit user controls.
+- `src/timeline.js`: pure authoritative server timeline calculation.
+- `frontend/src/Protocol.hs`: explicit Aeson protocol encoders and decoders.
+- `frontend/src/Model.hs`: pure position, revision, epoch and clock calculations.
+- `frontend/app/View.hs`: Reflex-DOM interface and user intentions.
+- `frontend/app/Connection.hs`: sockets, clock sampling, timeout and reconnection.
+- `frontend/app/Player.hs`: media effects, cancellation, drift and recovery.
+- `frontend/app/Bindings.hs`: small browser API bindings.
+- `frontend/app/Main.hs`: composition and ordered command batches.
+- `public/style.css`: monochrome terminal styling; no handwritten JS application remains.
 
 The movie bytes never pass through WebSockets. `@fastify/static` handles HTTP
 range requests, allowing the browser to request a portion and seek without
@@ -83,7 +103,7 @@ Once per second, an actively playing client corrects drift over 0.5 seconds.
 This is approximate synchronization, not frame-accurate playback.
 
 Remote state application does not send user commands back. Player updates are
-serialized, and a newer snapshot cancels obsolete metadata loading and ignores
+guarded by a generation counter, and a newer snapshot cancels obsolete metadata loading and ignores
 obsolete effects. Reconnection first recalibrates the clock and applies the
 latest snapshot. During a disconnection the local player pauses and shared
 controls are disabled; the other viewer may continue. The client retries every
@@ -104,7 +124,8 @@ HTTP endpoints:
 | Endpoint | Response |
 | --- | --- |
 | `GET /` | Movie webpage |
-| `GET /assets/...` | Browser JavaScript/CSS |
+| `GET /assets/style.css` | Monochrome stylesheet |
+| `GET /reflex/...` | Compiled Haskell assets (also available as a preview page) |
 | `GET /api/movies` | `{ "movies": [{ "id", "title", "url" }] }` |
 | `GET /media/:filename` | Approved MP4; supports `Range` / `206` responses |
 | WebSocket `/room` | Room state, commands, ping/pong, errors |
@@ -115,6 +136,7 @@ Browser-to-server messages:
 {"type":"select","mediaId":"example.mp4"}
 {"type":"play"}
 {"type":"pause"}
+{"type":"pause","reason":"user"}
 {"type":"pause","reason":"buffering"}
 {"type":"pause","reason":"ended"}
 {"type":"seek","positionSeconds":120}
@@ -167,16 +189,28 @@ npm run test:browser
 ```
 
 `npm test` uses Node's test runner and real Fastify HTTP/WebSocket handlers.
-It covers transitions, timing, ordering, revisions, epochs, malformed input,
+It covers transitions, timing, ordering, epochs, malformed input,
 late joining, reconnection snapshots, catalog restrictions, range responses,
-and blocked traversal paths.
+blocked traversal paths, artifact validation and frontend serving. All original
+11 JavaScript tests passed before removal of the legacy browser modules. The two
+client-only calculation tests moved to Haskell with the functions they exercise;
+the server tests remain. The final Node suite contains 12 tests.
+
+Linux CI also runs the Haskell model tests, feeds actual Fastify snapshots into
+the Haskell decoder, and sends Haskell-encoded commands through the JavaScript
+validator. The pinned toolchain and source layout are documented in
+[frontend/README.md](frontend/README.md).
 
 `npm run test:browser` additionally requires **Google Chrome** and **FFmpeg**
 on your machine. It generates a temporary 30-second synthetic clip, starts an
 ephemeral localhost server, and checks two headless Chrome pages. It verifies
 shared playback/seek, late joins, reconnection, and the end of a movie. Buffering
 and autoplay rejection are controlled simulations. It also checks drift correction,
-startup stalls, movie-selection reset, and narrow layouts. Screenshots are written to
+startup stalls, movie-selection reset, narrow layouts, fullscreen and local
+volume. Additional checks inject malformed/stale snapshots and new epochs,
+delay an obsolete metadata request, dispatch events from a closed socket,
+observe the 30-second clock refresh and suppress pongs to trigger the five-second
+timeout. Screenshots are written to
 `test-results/`; temporary movies are removed afterward.
 
 Cross-country throughput, real congestion, Safari/mobile autoplay policies,

@@ -34,6 +34,10 @@ async function runChecks(a, b) {
   await a.selectOption('#movies', 'test.mp4');
   await until(a, () => !document.querySelector('#play').disabled);
   await until(b, () => !document.querySelector('#play').disabled);
+  const selectedRevision = await a.evaluate(() => window.observedSockets.at(-1).snapshot.revision);
+  await a.selectOption('#movies', '');
+  await until(a, () => document.querySelector('#movies').value === 'test.mp4');
+  assert.equal(await a.evaluate(() => window.observedSockets.at(-1).snapshot.revision), selectedRevision);
   await a.click('#play');
   await until(b, () => document.querySelector('video').currentTime > 1);
   await checkTogether(a, b, false);
@@ -131,13 +135,19 @@ async function runChecks(a, b) {
   console.log('PASS end of movie pauses room');
 
   // Rapid selection changes exercise cancellation of stale metadata/play effects.
-  await a.selectOption('#movies', 'alternate.mp4');
-  await a.selectOption('#movies', 'test.mp4');
-  for (const page of [a, b]) {
-    await until(page, () => {
-      const video = document.querySelector('video');
-      return video.currentSrc.endsWith('/test.mp4') && video.currentTime < 0.2 && video.readyState >= 2;
-    });
+  const replacements = Number(process.env.RAPID_REPEATS ?? 1);
+  for (let attempt = 0; attempt < replacements; attempt += 1) {
+    const expectedRevision = await a.evaluate(() => window.observedSockets.at(-1).snapshot.revision + 2);
+    await a.selectOption('#movies', 'alternate.mp4');
+    await a.selectOption('#movies', 'test.mp4');
+    for (const page of [a, b]) {
+      await page.waitForFunction(revision => window.observedSockets.at(-1).snapshot.revision >= revision,
+        expectedRevision, { timeout: 12000 });
+      await until(page, () => {
+        const video = document.querySelector('video');
+        return video.currentSrc.endsWith('/test.mp4') && video.currentTime < 0.2 && video.readyState >= 2;
+      });
+    }
   }
   await checkTogether(a, b, true);
   await a.click('#play');
@@ -188,11 +198,7 @@ try {
   }
   browser = await chromium.launch(launchOptions);
   const context = await browser.newContext({ viewport: { width: 1100, height: 1000 } });
-  if (process.env.FRONTEND_PATH === '/reflex/') {
-    await observeSockets(context);
-  } else {
-    // The fallback browser suite does not need Reflex-specific protocol injection.
-  }
+  await observeSockets(context);
   const a = await context.newPage();
   const b = await context.newPage();
   for (const page of [a, b]) {
@@ -209,13 +215,25 @@ try {
     await until(page, () => !document.querySelector('#movies').disabled);
   }
   await runChecks(a, b);
-  if (process.env.FRONTEND_PATH === '/reflex/') {
-    await checkReflexEdges(a);
-  } else {
-    // Keep the original JavaScript frontend available during migration.
-  }
+  await checkReflexEdges(a);
   assert.deepEqual(errors, []);
   console.log('PASS no browser JavaScript errors');
+} catch (error) {
+  if (browser !== null) {
+    for (const context of browser.contexts()) {
+      for (const page of context.pages()) {
+        console.error('Browser failure state:', await page.evaluate(() => {
+          const video = document.querySelector('video');
+          return { status: document.querySelector('#status')?.textContent, error: document.querySelector('#error')?.textContent,
+            source: video?.currentSrc, position: video?.currentTime, readyState: video?.readyState, paused: video?.paused,
+            snapshot: window.observedSockets?.at(-1)?.snapshot };
+        }));
+      }
+    }
+  } else {
+    // Browser setup failed before diagnostic pages existed.
+  }
+  throw error;
 } finally {
   if (browser !== null) {
     await browser.close();

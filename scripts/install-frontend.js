@@ -83,7 +83,7 @@ if (process.argv[1] !== undefined && resolve(process.argv[1]) === fileURLToPath(
     throw new Error('Usage: node scripts/install-frontend.js DOWNLOAD_DIRECTORY COMMIT_SHA');
   } else {
     await installFrontend(resolve(source), commit);
-    console.log('Verified frontend installed; restart Fastify to expose /reflex/.');
+    console.log('Verified frontend installed; restart Fastify and open http://localhost:3000/.');
   }
 } else {
   // Imported by the installer tests.

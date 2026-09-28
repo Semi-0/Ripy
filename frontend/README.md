@@ -2,9 +2,10 @@
 
 This candidate is built on Linux in the `Reflex frontend` GitHub Actions workflow.
 The minimal compiled page passed CI at commit
-`f1913dafac8f70aea57ab37518415ba077303d73` (run `36482537418`). The working
-JavaScript application stays at `/` until the full Reflex candidate passes
-browser parity.
+`f1913dafac8f70aea57ab37518415ba077303d73` (run `36482537418`). The full Reflex
+candidate passed browser parity at `9293291323d68f77e38cb1949f853d5be026226d`
+(run `36486451663`) before becoming the default page. The old JavaScript frontend
+is preserved in Git history on `main`, not loaded alongside the Reflex application.
 
 `default.nix` pins reflex-platform and its compiler/dependency graph by commit.
 The workflow builds `ghcjs.ripy-frontend`, packages the browser JavaScript, and
@@ -48,7 +49,7 @@ node scripts/install-frontend.js /tmp/ripy-reflex-COMMIT_SHA COMMIT_SHA
 npm start
 ```
 
-Open `http://localhost:3000/reflex/`. Stop the old server before `npm start` if
+Open `http://localhost:3000/` (`/reflex/` also serves the compiled page). Stop the old server before `npm start` if
 port 3000 is already in use. Downloads are not installed automatically.
 Installation checks the expected commit and SHA-256 digests, copies into a
 staging directory, validates those copied bytes, and only then replaces
@@ -56,8 +57,10 @@ staging directory, validates those copied bytes, and only then replaces
 Hashes detect corruption; download only artifacts from the trusted repository's
 successful workflow. They are not an independent signature.
 
-The server's media folder, `.lsp/`, and JavaScript frontend are not modified by
-installation. Browser assets are ignored by Git; they belong to the CI artifact.
+The server's media folder and `.lsp/` are not modified by installation. Browser
+assets are ignored by Git; they belong to the CI artifact. CI publishes assets
+even after a browser-test failure for diagnosis; install only a successful run
+for normal use. The artifact's presence alone is not proof of passing tests.
 
 ## Protocol boundary
 

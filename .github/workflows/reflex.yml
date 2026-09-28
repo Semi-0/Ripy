@@ -39,8 +39,9 @@ jobs:
       - name: Two-browser Reflex parity
         run: node test/browser-check.js
         env:
-          FRONTEND_PATH: /reflex/
+          FRONTEND_PATH: /
           BROWSER_CHANNEL: chromium
+          RAPID_REPEATS: 5
       - uses: actions/upload-artifact@v4
         if: always() && hashFiles('frontend-dist/build.json') != ''
         with:

@@ -7,7 +7,7 @@ import Data.Text (Text)
 import Reflex.Dom
 import Protocol
 
-data Intent = Choose Text | Start | Stop | SeekChanged | VolumeChanged | Enable | Fullscreen
+data Intent = Choose Text Text | Start | Stop | SeekChanged | VolumeChanged | Enable | Fullscreen
 data Ui = Ui
   { catalog :: [Movie], selected :: Text, connectionLabel :: Text, ready :: Bool
   , playable :: Bool, statusLabel :: Text, errorLabel :: Text, needsEnable :: Bool
@@ -24,7 +24,10 @@ movieView :: MonadWidget t m => Dynamic t Ui -> m (Event t [Intent])
 movieView ui = elAttr "main" ("data-reflex-ready" =: "true") $ do
   el "header" $ do
     elClass "p" "eyebrow" $ text "PRIVATE SCREENING / SHARED ROOM"
-    el "h1" $ text "> cloud cinema_"
+    el "h1" $ do
+      el "span" $ text ">"
+      text " cloud cinema"
+      elClass "span" "cursor" $ text "_"
     elClass "p" "intro" $ text "Choose a movie. Watch together."
   chosen <- elClass "section" "toolbar" $ do
     elAttr "label" ("for" =: "movies") $ text "movie /"
@@ -40,7 +43,7 @@ movieView ui = elAttr "main" ("data-reflex-ready" =: "true") $ do
     (selector, _) <- selectElement config $ dyn_ $ ffor options $ \entries ->
       mapM_ (\(ident, title) -> elAttr "option" ("value" =: ident) $ text title) (Map.toList entries)
     elAttr "p" (("id" =: "connection") <> ("role" =: "status")) $ dynText $ connectionLabel <$> ui
-    pure $ (\ident -> [Choose ident]) <$> _selectElement_change selector
+    pure $ attachPromptlyDynWith (\previous ident -> [Choose previous ident]) selection (_selectElement_change selector)
   elDynAttr "p" ((\u -> ("id" =: "empty") <> conditional (not $ null $ catalog u) ("hidden" =: "")) <$> ui) $
     text "No movies yet. Add an MP4 to media/, restart the server, and refresh."
   actions <- elAttr "section" (("id" =: "player") <> ("aria-label" =: "Movie player and controls")) $ do

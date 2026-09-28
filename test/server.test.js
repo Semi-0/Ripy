@@ -14,8 +14,12 @@ async function fixture(t) {
   await writeFile(join(mediaDirectory, 'notes.txt'), 'not a movie');
   await symlink(join(directory, 'secret.mp4'), join(mediaDirectory, 'link.mp4'));
   await mkdir(join(mediaDirectory, 'directory.mp4'));
+  const frontendDirectory = join(directory, 'frontend');
+  await mkdir(frontendDirectory);
+  await writeFile(join(frontendDirectory, 'index.html'), '<main>Reflex artifact fixture</main>');
+  await writeFile(join(frontendDirectory, 'all.js'), '// compiled browser asset fixture');
   let now = 1000;
-  const app = await buildServer({ mediaDirectory, now: () => now });
+  const app = await buildServer({ mediaDirectory, frontendDirectory, now: () => now });
   await app.ready();
   t.after(async () => {
     for (const client of app.websocketServer.clients) {
@@ -66,6 +70,8 @@ test('catalog and HTTP serving support ranges and exclude unsafe paths', async (
   const catalog = await app.inject('/api/movies');
   assert.deepEqual(catalog.json().movies, [{ id: 'test clip.mp4', title: 'test clip', url: '/media/test%20clip.mp4' }]);
   assert.equal((await app.inject('/')).statusCode, 200);
+  assert.equal((await app.inject('/')).body, '<main>Reflex artifact fixture</main>');
+  assert.equal((await app.inject('/reflex/all.js')).statusCode, 200);
   const range = await app.inject({ url: '/media/test%20clip.mp4', headers: { range: 'bytes=2-5' } });
   assert.equal(range.statusCode, 206);
   assert.equal(range.body, '2345');

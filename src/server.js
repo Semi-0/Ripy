@@ -4,12 +4,14 @@ import websocket from '@fastify/websocket';
 import { randomUUID } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { existsSync } from 'node:fs';
+import { join } from 'node:path';
 import { readMediaCatalog } from './catalog.js';
 import { decodeAndValidate, ProtocolError } from './protocol.js';
 import { createEmptyRoom, transitionRoom } from './room.js';
 
 const publicDirectory = fileURLToPath(new URL('../public/', import.meta.url));
 export const defaultMediaDirectory = fileURLToPath(new URL('../media/', import.meta.url));
+const defaultFrontendDirectory = fileURLToPath(new URL('../frontend-dist/', import.meta.url));
 
 function send(socket, message) {
   if (socket.readyState === 1) {
@@ -45,22 +47,28 @@ function handleMessage(socket, bytes, context) {
   }
 }
 
-export async function buildServer({ mediaDirectory = defaultMediaDirectory, logger = false, now = Date.now } = {}) {
+export async function buildServer({ mediaDirectory = defaultMediaDirectory, frontendDirectory = defaultFrontendDirectory, logger = false, now = Date.now } = {}) {
   const app = Fastify({ logger });
   const catalog = await readMediaCatalog(mediaDirectory);
   const context = { room: createEmptyRoom(randomUUID(), now()), catalog, clients: new Set(), now, log: app.log };
 
   await app.register(staticFiles, { root: mediaDirectory, serve: false, acceptRanges: true });
   await app.register(staticFiles, { root: publicDirectory, prefix: '/assets/', decorateReply: false });
-  const candidateDirectory = fileURLToPath(new URL('../frontend-dist/', import.meta.url));
-  if (existsSync(candidateDirectory)) {
-    await app.register(staticFiles, { root: candidateDirectory, prefix: '/reflex/', decorateReply: false });
+  const hasFrontend = existsSync(join(frontendDirectory, 'index.html')) && existsSync(join(frontendDirectory, 'all.js'));
+  if (hasFrontend) {
+    await app.register(staticFiles, { root: frontendDirectory, prefix: '/reflex/', decorateReply: false });
   } else {
-    // The working JavaScript frontend remains available until a candidate is built.
+    app.log.warn('Install a verified Reflex artifact before opening the movie page. See frontend/README.md.');
   }
   await app.register(websocket, { options: { maxPayload: 4096 } });
 
-  app.get('/', async (_request, reply) => reply.sendFile('index.html', publicDirectory));
+  app.get('/', async (_request, reply) => {
+    if (hasFrontend) {
+      return reply.sendFile('index.html', frontendDirectory);
+    } else {
+      return reply.code(503).type('text/plain').send('Reflex frontend is not installed. Follow frontend/README.md to install a successful CI artifact, then restart this server.');
+    }
+  });
   app.get('/api/movies', async () => ({ movies: [...catalog.values()] }));
   app.get('/media/:filename', async (request, reply) => {
     if (!catalog.has(request.params.filename)) {

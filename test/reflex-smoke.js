@@ -17,7 +17,7 @@ try {
       // GHCJS reports uncaught thread exceptions through the console.
     }
   });
-  await page.goto(`${url}/reflex/`);
+  await page.goto(url);
   await page.locator('[data-reflex-ready="true"]').waitFor();
   assert.match(await page.locator('h1').textContent(), /cloud cinema/);
   assert.deepEqual(errors, []);

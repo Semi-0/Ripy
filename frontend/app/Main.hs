@@ -26,10 +26,13 @@ main = mainWidget $ mdo
   playerRef <- liftIO $ newIORef Nothing
   ui <- foldDyn ($) emptyUi changes
   intentions <- movieView ui
-  commands <- performEvent $ ffor intentions $ liftIO . fmap concat . mapM (commandFor playerRef changeUi)
-  -- Defined ordering: explicit intentions first, then media observations.
-  let outgoing = mergeWith (++) [commands, observations]
-  performEvent_ $ ffor outgoing $ \batch -> liftIO $ do
+  -- Merge before effectful reads, so a performEvent boundary cannot reorder peers.
+  let requests = mergeWith (++) [map Left <$> intentions, map Right <$> observations]
+      resolve request = case request of
+        Left intention -> commandFor playerRef changeUi intention
+        Right command -> pure [command]
+  commands <- performEvent $ ffor requests $ liftIO . fmap concat . mapM resolve
+  performEvent_ $ ffor commands $ \batch -> liftIO $ do
     connection <- readIORef connectionRef
     case connection of
       Just room -> mapM_ (sendCommand room) batch
@@ -40,8 +43,8 @@ main = mainWidget $ mdo
 
 commandFor :: IORef (Maybe Player) -> ((Ui -> Ui) -> IO ()) -> Intent -> IO [ClientCommand]
 commandFor playerRef change intent = case intent of
-  Choose "" -> pure []
-  Choose ident -> pure [SelectMovie ident]
+  Choose previous "" -> B.setText "movies" "value" (B.toJS previous) >> pure []
+  Choose _ ident -> pure [SelectMovie ident]
   Start -> pure [Play]
   Stop -> pure [Pause UserPause]
   SeekChanged -> do
