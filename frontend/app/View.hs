@@ -78,12 +78,13 @@ controls ui = elClass "section" "controls" $ do
   elAttr "label" (("class" =: "seek-label") <> ("for" =: "seek")) $ do
     text "Timeline "
     elAttr "output" ("id" =: "time") $ dynText $ timeLabel <$> ui
-  let seekAttrs u = disabled "seek" u <> Map.fromList [("type","range"),("min","0"),("step","0.1"),("aria-label","Seek movie")]
+  let seekAttrs = Map.fromList
+        [("id","seek"),("type","range"),("min","0"),("step","0.1"),("aria-label","Seek movie"),("disabled","")]
       seekDisabled u
         | playable u = Nothing
         | otherwise = Just ""
   seek <- inputElement $ def
-    & inputElementConfig_elementConfig . elementConfig_initialAttributes .~ seekAttrs emptyUi
+    & inputElementConfig_elementConfig . elementConfig_initialAttributes .~ seekAttrs
     & inputElementConfig_elementConfig . elementConfig_modifyAttributes .~ ((\u -> "disabled" =: seekDisabled u) <$> updated ui)
   elAttr "label" (("class" =: "volume-label") <> ("for" =: "volume")) $ text "Your volume"
   volume <- inputElement $ def & inputElementConfig_initialValue .~ "1"
