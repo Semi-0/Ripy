@@ -12,7 +12,8 @@ loads it in Chromium through the ordinary Fastify server. No Haskell process is
 used to serve the page. A native JSaddle development server is not part of this
 build or runtime. The pin is
 `f231e2425ac92339b8491cdd970930d63d9ad1ad`; its transitive package pins include
-Reflex-DOM `5d1dbde4471d7f9be60977b972ab0219026ff5dc`.
+Reflex-DOM `5d1dbde4471d7f9be60977b972ab0219026ff5dc`. CI explicitly installs
+Nix `2.35.2`, the version verified in the successful compiler build.
 
 ## Source responsibilities
 

@@ -30,12 +30,17 @@ movieView ui = elAttr "main" ("data-reflex-ready" =: "true") $ do
     elAttr "label" ("for" =: "movies") $ text "movie /"
     options <- holdUniqDyn $ (\u -> Map.fromList $ ("", "Choose a movie…") : map (\m -> (movieId m, movieTitle m)) (catalog u)) <$> ui
     selection <- holdUniqDyn $ selected <$> ui
-    let attributes = (\u -> ("id" =: "movies") <> conditional (not (ready u) || null (catalog u)) ("disabled" =: "")) <$> ui
-    dropdownWidget <- dropdown "" options $ def
-      & dropdownConfig_attributes .~ attributes
-      & dropdownConfig_setValue .~ updated selection
+    let disabled u
+          | not (ready u) || null (catalog u) = Just ""
+          | otherwise = Nothing
+        config = def
+          & initialAttributes .~ (("id" =: "movies") <> ("disabled" =: ""))
+          & modifyAttributes .~ ((\u -> "disabled" =: disabled u) <$> updated ui)
+          & selectElementConfig_setValue .~ updated selection
+    (selector, _) <- selectElement config $ dyn_ $ ffor options $ \entries ->
+      mapM_ (\(ident, title) -> elAttr "option" ("value" =: ident) $ text title) (Map.toList entries)
     elAttr "p" (("id" =: "connection") <> ("role" =: "status")) $ dynText $ connectionLabel <$> ui
-    pure $ (\ident -> [Choose ident]) <$> _dropdown_change dropdownWidget
+    pure $ (\ident -> [Choose ident]) <$> _selectElement_change selector
   elDynAttr "p" ((\u -> ("id" =: "empty") <> conditional (not $ null $ catalog u) ("hidden" =: "")) <$> ui) $
     text "No movies yet. Add an MP4 to media/, restart the server, and refresh."
   actions <- elAttr "section" (("id" =: "player") <> ("aria-label" =: "Movie player and controls")) $ do
