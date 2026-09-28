@@ -48,13 +48,13 @@ reactIntent duration intent = case intent of
   SelectMovie ident -> [SendCommand $ Protocol.SelectMovie ident]
   Start -> [SendCommand Play]
   Stop -> [SendCommand $ Pause UserPause]
-  SeekTo raw -> either (pure . RejectIntent) (pure . SendCommand . Seek . (`clampPosition` duration)) $ number "Invalid seek position." raw
-  SetLocalVolume raw -> either (pure . RejectIntent) (pure . SetVolume . max 0 . min 1) $ number "Invalid volume." raw
+  SeekTo raw -> either (pure . RejectIntent) (pure . SendCommand . Seek . (`clampPosition` duration)) $ parseNumber "Invalid seek position." raw
+  SetLocalVolume raw -> either (pure . RejectIntent) (pure . SetVolume . max 0 . min 1) $ parseNumber "Invalid volume." raw
   Enable -> [EnableVideo]
   Fullscreen -> [ToggleFullscreen]
 
-number :: Text -> Text -> Either Text Double
-number message raw = case readMaybe $ T.unpack raw of
+parseNumber :: Text -> Text -> Either Text Double
+parseNumber message raw = case readMaybe $ T.unpack raw of
   Just value | finite value -> Right value
   _ -> Left message
 
