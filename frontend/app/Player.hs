@@ -1,4 +1,4 @@
-{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE FlexibleContexts, OverloadedStrings #-}
 module Player
   ( VideoInputs(..), PlayerState(..), PlayerNetwork(..), videoController ) where
 
