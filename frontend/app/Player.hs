@@ -1,12 +1,15 @@
 {-# LANGUAGE OverloadedStrings #-}
-module Player (Player(..), createPlayer) where
+module Player
+  ( VideoInputs(..), PlayerState(..), PlayerNetwork(..), videoController ) where
 
 import Control.Concurrent (forkIO, threadDelay)
 import Control.Monad (forever, void)
+import Control.Monad.IO.Class (liftIO)
 import Data.IORef
 import Data.List (find)
 import Data.Text (Text)
 import qualified Data.Text as T
+import Reflex.Dom
 import Bindings
 import Model
 import Protocol
@@ -17,9 +20,109 @@ data Playback = Playback
   { latest :: Maybe RoomState, connected :: Bool, loaded :: Maybe Text
   , version :: Int, applying :: Bool, reported :: Bool }
 
-createPlayer :: [Movie] -> (ClientCommand -> IO ()) -> IO Double
+data VideoInputs t = VideoInputs
+  { videoStates :: Event t RoomState
+  , videoDisconnects :: Event t ()
+  , videoEnableRequests :: Event t ()
+  , videoFullscreenRequests :: Event t ()
+  , videoVolumes :: Event t Double
+  }
+
+data PlayerEvent
+  = PlayerStatus Text
+  | PlayerError Text
+  | ClearPlayerError
+  | PlayerEnable Bool
+  | PlayerPlayable Bool
+  | PlayerProgress Double Double Bool
+
+data PlayerState = PlayerState
+  { playerStatus :: Text
+  , playerError :: Text
+  , playerNeedsEnable :: Bool
+  , playerPlayable :: Bool
+  , playerDuration :: Double
+  , playerTimeLabel :: Text
+  , playerFullscreen :: Bool
+  } deriving (Eq, Show)
+
+data PlayerNetwork t = PlayerNetwork
+  { playerState :: Dynamic t PlayerState
+  , playerMediaCommands :: Event t [ClientCommand]
+  }
+
+initialPlayerState :: PlayerState
+initialPlayerState = PlayerState "Select a movie to begin." "" False False 0 "0:00 / 0:00" False
+
+-- Browser callbacks enter as events; only browser-resource handles and
+-- cancellation generations remain mutable inside this adapter.
+videoController :: MonadWidget t m
+  => Dynamic t [Movie] -> IO Double -> VideoInputs t -> m (PlayerNetwork t)
+videoController catalog serverTime inputs = do
+  (events, emit) <- newTriggerEvent
+  (mediaCommands, emitMediaCommand) <- newTriggerEvent
+  playerRef <- liftIO $ newIORef Nothing
+  catalogRef <- liftIO $ newIORef []
+  performEvent_ $ ffor (updated catalog) $ liftIO . writeIORef catalogRef
+  getPostBuild >>= performEvent_ . fmap (\() -> do
+    initialCatalog <- sample $ current catalog
+    liftIO $ do
+      writeIORef catalogRef initialCatalog
+      afterMount $ do
+        player <- createPlayer (readIORef catalogRef) (emitMediaCommand . pure) serverTime
+          (emit . PlayerStatus) (emit . PlayerError) (emit . PlayerEnable) (emit . PlayerPlayable)
+        writeIORef playerRef $ Just player
+        listen "video" "dblclick" $ toggleFullscreen emit
+        void $ forkIO $ forever $ threadDelay 250000 >> emitProgress emit)
+  performEvent_ $ ffor (videoStates inputs) $ \snapshot -> liftIO $ do
+    emit ClearPlayerError
+    withPlayer playerRef (`updatePlayer` snapshot)
+  performEvent_ $ ffor (videoDisconnects inputs) $ const $ liftIO $ withPlayer playerRef disconnectPlayer
+  performEvent_ $ ffor (videoEnableRequests inputs) $ const $ liftIO $ withPlayer playerRef enablePlayback
+  performEvent_ $ ffor (videoFullscreenRequests inputs) $ const $ liftIO $ toggleFullscreen emit
+  performEvent_ $ ffor (videoVolumes inputs) $ liftIO . setNumber "video" "volume"
+  state <- foldDyn playerStateAfter initialPlayerState events
+  pure $ PlayerNetwork state mediaCommands
+
+withPlayer :: IORef (Maybe Player) -> (Player -> IO ()) -> IO ()
+withPlayer ref action = readIORef ref >>= maybe (pure ()) action
+
+toggleFullscreen :: (PlayerEvent -> IO ()) -> IO ()
+toggleFullscreen emit = fullscreen $ \result -> if result == "" then pure () else emit $ PlayerError result
+
+emitProgress :: (PlayerEvent -> IO ()) -> IO ()
+emitProgress emit = do
+  duration <- numberProperty "video" "duration"
+  position <- numberProperty "video" "currentTime"
+  focused <- isActive "seek"
+  let bound = clampPosition duration duration
+  setText "seek" "max" $ toJS $ T.pack $ show bound
+  if focused then pure () else setText "seek" "value" $ toJS $ T.pack $ show position
+  PlayerProgress position duration <$> isFullscreen >>= emit
+
+playerStateAfter :: PlayerEvent -> PlayerState -> PlayerState
+playerStateAfter event state = case event of
+  PlayerStatus message -> state { playerStatus = message }
+  PlayerError message -> state { playerError = message }
+  ClearPlayerError -> state { playerError = "" }
+  PlayerEnable value -> state { playerNeedsEnable = value }
+  PlayerPlayable value -> state { playerPlayable = value }
+  PlayerProgress position duration fullscreenActive -> state
+    { playerDuration = clampPosition duration duration
+    , playerTimeLabel = formatTime position <> " / " <> formatTime duration
+    , playerFullscreen = fullscreenActive
+    }
+
+formatTime :: Double -> Text
+formatTime seconds
+  | not (finite seconds) = "0:00"
+  | otherwise = let whole = floor (max 0 seconds) :: Integer
+                    suffix = T.pack $ show $ whole `mod` 60
+                in T.pack (show $ whole `div` 60) <> ":" <> T.justifyRight 2 '0' suffix
+
+createPlayer :: IO [Movie] -> (ClientCommand -> IO ()) -> IO Double
   -> (Text -> IO ()) -> (Text -> IO ()) -> (Bool -> IO ()) -> (Bool -> IO ()) -> IO Player
-createPlayer catalog send serverTime status onError enabled playable = do
+createPlayer readCatalog send serverTime status onError enabled playable = do
   ref <- newIORef $ Playback Nothing False Nothing 0 False False
   let current token action = do
         state <- readIORef ref
@@ -87,18 +190,20 @@ createPlayer catalog send serverTime status onError enabled playable = do
           modifyIORef' ref $ \s -> s { loaded = Nothing, applying = False }
           status "Select a movie to begin."
           refresh
-        Just ident -> case find ((== ident) . movieId) catalog of
-          Nothing -> failLoad "Movie catalog changed. Refresh this page."
-          Just movie -> do
-            state <- readIORef ref
-            failed <- videoFailed
-            if loaded state /= Just ident || failed then do
-              modifyIORef' ref $ \s -> s { loaded = Just ident }
-              setText "video" "src" (toJS $ movieUrl movie)
-              loadVideo
-            else pure ()
-            time <- now
-            waitMetadata snapshot token (time + 15000)
+        Just ident -> do
+          catalog <- readCatalog
+          case find ((== ident) . movieId) catalog of
+            Nothing -> failLoad "Movie catalog changed. Refresh this page."
+            Just movie -> do
+              state <- readIORef ref
+              failed <- videoFailed
+              if loaded state /= Just ident || failed then do
+                modifyIORef' ref $ \s -> s { loaded = Just ident }
+                setText "video" "src" (toJS $ movieUrl movie)
+                loadVideo
+              else pure ()
+              time <- now
+              waitMetadata snapshot token (time + 15000)
       update snapshot = do
         previous <- readIORef ref
         let token = version previous + 1

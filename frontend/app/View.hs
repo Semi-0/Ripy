@@ -1,13 +1,15 @@
-{-# LANGUAGE OverloadedStrings, FlexibleContexts #-}
+{-# LANGUAGE OverloadedStrings, FlexibleContexts, RecursiveDo #-}
 module View where
 
 import Data.Map (Map)
 import qualified Data.Map as Map
 import Data.Text (Text)
+import qualified Data.Text as T
 import Reflex.Dom
 import Protocol
 
-data Intent = Choose Text Text | Start | Stop | SeekChanged | VolumeChanged | Enable | Fullscreen
+data Intent = SelectMovie Text | Start | Stop | SeekTo Text | SetLocalVolume Text | Enable | Fullscreen
+  deriving (Eq, Show)
 data Ui = Ui
   { catalog :: [Movie], selected :: Text, connectionLabel :: Text, ready :: Bool
   , playable :: Bool, statusLabel :: Text, errorLabel :: Text, needsEnable :: Bool
@@ -29,21 +31,22 @@ movieView ui = elAttr "main" ("data-reflex-ready" =: "true") $ do
       text " cloud cinema"
       elClass "span" "cursor" $ text "_"
     elClass "p" "intro" $ text "Choose a movie. Watch together."
-  chosen <- elClass "section" "toolbar" $ do
+  chosen <- elClass "section" "toolbar" $ mdo
     elAttr "label" ("for" =: "movies") $ text "movie /"
     options <- holdUniqDyn $ (\u -> Map.fromList $ ("", "Choose a movie…") : map (\m -> (movieId m, movieTitle m)) (catalog u)) <$> ui
     selection <- holdUniqDyn $ selected <$> ui
     let disabled u
           | not (ready u) || null (catalog u) = Just ""
           | otherwise = Nothing
+        restore = attachPromptlyDynWith const selection $ ffilter T.null $ _selectElement_change selector
         config = def
           & initialAttributes .~ (("id" =: "movies") <> ("disabled" =: ""))
           & modifyAttributes .~ ((\u -> "disabled" =: disabled u) <$> updated ui)
-          & selectElementConfig_setValue .~ updated selection
+          & selectElementConfig_setValue .~ leftmost [updated selection, restore]
     (selector, _) <- selectElement config $ dyn_ $ ffor options $ \entries ->
       mapM_ (\(ident, title) -> elAttr "option" ("value" =: ident) $ text title) (Map.toList entries)
     elAttr "p" (("id" =: "connection") <> ("role" =: "status")) $ dynText $ connectionLabel <$> ui
-    pure $ attachPromptlyDynWith (\previous ident -> [Choose previous ident]) selection (_selectElement_change selector)
+    pure $ fmapMaybe (fmap (pure . SelectMovie) . nonempty) $ _selectElement_change selector
   elDynAttr "p" ((\u -> ("id" =: "empty") <> conditional (not $ null $ catalog u) ("hidden" =: "")) <$> ui) $
     text "No movies yet. Add an MP4 to media/, restart the server, and refresh."
   actions <- elAttr "section" (("id" =: "player") <> ("aria-label" =: "Movie player and controls")) $ do
@@ -76,8 +79,18 @@ controls ui = elClass "section" "controls" $ do
     text "Timeline "
     elAttr "output" ("id" =: "time") $ dynText $ timeLabel <$> ui
   let seekAttrs u = disabled "seek" u <> Map.fromList [("type","range"),("min","0"),("step","0.1"),("aria-label","Seek movie")]
-  (seek, _) <- elDynAttr' "input" (seekAttrs <$> ui) blank
+      seekDisabled u
+        | playable u = Nothing
+        | otherwise = Just ""
+  seek <- inputElement $ def
+    & inputElementConfig_elementConfig . elementConfig_initialAttributes .~ seekAttrs emptyUi
+    & inputElementConfig_elementConfig . elementConfig_modifyAttributes .~ ((\u -> "disabled" =: seekDisabled u) <$> updated ui)
   elAttr "label" (("class" =: "volume-label") <> ("for" =: "volume")) $ text "Your volume"
-  (volume, _) <- elAttr' "input" (Map.fromList [("id","volume"),("type","range"),("min","0"),("max","1"),("step","0.05"),("value","1")]) blank
+  volume <- inputElement $ def & inputElementConfig_initialValue .~ "1"
+    & inputElementConfig_elementConfig . elementConfig_initialAttributes .~ Map.fromList [("id","volume"),("type","range"),("min","0"),("max","1"),("step","0.05")]
   pure $ mergeWith (++) [[Start] <$ domEvent Click play, [Stop] <$ domEvent Click pause,
-    [SeekChanged] <$ domEvent Change seek, [VolumeChanged] <$ domEvent Input volume]
+    pure . SeekTo <$> _inputElement_input seek, pure . SetLocalVolume <$> _inputElement_input volume]
+
+nonempty :: Text -> Maybe Text
+nonempty value | T.null value = Nothing
+nonempty value = Just value

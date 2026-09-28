@@ -1,0 +1,105 @@
+[{:type :system :id :system/ripy
+  :text "Ripy streams media through Fastify and synchronizes browser playback through a Reflex event network."
+  :lifecycle :candidate :scope "Ripy repository"
+  :has-purpose [:purpose/watch-together]
+  :governed-by [:principle/compose-reactions :principle/state-at-effects :principle/server-authority]
+  :constrained-by [:constraint/protocol-stable :constraint/snapshots-are-observations :constraint/ordered-intentions]}
+
+ {:type :purpose :id :purpose/watch-together
+  :text "Let remote viewers select, play, pause, and seek one shared movie timeline."
+  :lifecycle :candidate :scope "system/ripy"
+  :applies-to [:component/fastify-server :component/reflex-network]}
+
+ {:type :architecture-component :id :component/fastify-server
+  :text "Owns media delivery, command validation, arrival ordering, and the authoritative room timeline."
+  :lifecycle :candidate :created-at #inst "2026-09-29T00:00:00.000-00:00"
+  :scope "src/"
+  :supported-by [:evidence/server-tests]}
+ {:type :architecture-component :id :component/reflex-network
+  :text "Owns frontend event composition, snapshot acceptance, derived presentation, and reaction routing."
+  :lifecycle :candidate :created-at #inst "2026-09-29T00:00:00.000-00:00"
+  :scope "frontend/app/Main.hs and frontend/app/Network.hs"
+  :supported-by [:evidence/reflex-composition]}
+ {:type :architecture-component :id :component/websocket-adapter
+  :text "Owns WebSocket resources, reconnect generations, clock samples, and command transmission effects."
+  :lifecycle :candidate :created-at #inst "2026-09-29T00:00:00.000-00:00"
+  :scope "frontend/app/Connection.hs"
+  :supported-by [:evidence/browser-adapters]}
+ {:type :architecture-component :id :component/video-adapter
+  :text "Owns the browser video resource, asynchronous load generations, playback effects, and media observations."
+  :lifecycle :candidate :created-at #inst "2026-09-29T00:00:00.000-00:00"
+  :scope "frontend/app/Player.hs"
+  :supported-by [:evidence/browser-adapters]}
+
+ {:type :boundary-assignment :id :boundary/websocket-within-frontend
+  :text "The WebSocket adapter is an effect boundary composed by the Reflex network."
+  :lifecycle :candidate :created-at #inst "2026-09-29T00:00:00.000-00:00"
+  :scope "Frontend connection effects"
+  :child-component [:component/websocket-adapter]
+  :parent-component [:component/reflex-network]
+  :supported-by [:evidence/reflex-composition :evidence/browser-adapters]
+  :verification "Trace outgoing command events and incoming typed connection events through Main and Connection."}
+ {:type :boundary-assignment :id :boundary/video-within-frontend
+  :text "The video adapter is an effect boundary composed by the Reflex network."
+  :lifecycle :candidate :created-at #inst "2026-09-29T00:00:00.000-00:00"
+  :scope "Frontend media effects"
+  :child-component [:component/video-adapter]
+  :parent-component [:component/reflex-network]
+  :supported-by [:evidence/reflex-composition :evidence/browser-adapters]
+  :verification "Trace desired playback events, local media observations, and typed player state through Main and Player."}
+
+ {:type :principle :id :principle/compose-reactions
+  :text "Frontend behavior is composed from typed intention, observation, reaction, and presentation events."
+  :lifecycle :candidate :scope "component/reflex-network"
+  :applies-to [:component/reflex-network]
+  :supported-by [:evidence/reflex-composition]
+  :motivates [:constraint/snapshots-are-observations :constraint/ordered-intentions]}
+ {:type :principle :id :principle/state-at-effects
+  :text "Mutable resource state is confined to browser effect adapters; application state is held and derived by Reflex."
+  :lifecycle :candidate :scope "Frontend architecture"
+  :applies-to [:component/reflex-network :component/websocket-adapter :component/video-adapter]
+  :supported-by [:evidence/reflex-composition :evidence/browser-adapters]}
+ {:type :principle :id :principle/server-authority
+  :text "The Fastify room is the authority for shared playback; browsers publish intentions and consume complete snapshots."
+  :lifecycle :candidate :scope "Shared playback protocol"
+  :applies-to [:component/fastify-server :component/reflex-network]
+  :supported-by [:evidence/server-tests]
+  :motivates [:constraint/protocol-stable :constraint/snapshots-are-observations]}
+
+ {:type :constraint :id :constraint/protocol-stable
+  :text "The Haskell refactor preserves the existing HTTP and WebSocket wire formats."
+  :lifecycle :candidate :scope "Protocol.hs and Fastify routes"
+  :applies-to [:component/fastify-server :component/reflex-network]
+  :verification "Run JavaScript server tests, Haskell protocol tests, and the cross-language compatibility check."
+  :supported-by [:evidence/server-tests]}
+ {:type :constraint :id :constraint/snapshots-are-observations
+  :text "Accepting or rendering a server snapshot must not emit a playback command."
+  :lifecycle :candidate :scope "component/reflex-network"
+  :applies-to [:component/reflex-network]
+  :verification "Inspect the event graph and run two-browser synchronization tests."
+  :supported-by [:evidence/reflex-composition]}
+ {:type :constraint :id :constraint/ordered-intentions
+  :text "Simultaneous commands remain lists ordered with explicit user intentions before media observations."
+  :lifecycle :candidate :scope "component/reflex-network"
+  :applies-to [:component/reflex-network]
+  :verification "Exercise merged event batches and server command-order tests."
+  :supported-by [:evidence/reflex-composition :evidence/server-tests]}
+
+ {:type :evidence :id :evidence/reflex-composition
+  :text "Main and Network define the recursive event graph, pure reaction mapping, snapshot acceptance, and derived UI."
+  :lifecycle :candidate :evidence-state :supported
+  :scope "component/reflex-network"
+  :applies-to [:component/reflex-network]
+  :implemented-in ["frontend/app/Main.hs" "frontend/app/Network.hs" "frontend/app/View.hs"]}
+ {:type :evidence :id :evidence/browser-adapters
+  :text "Connection and Player keep socket, clock, DOM resource, and cancellation state inside effect adapters."
+  :lifecycle :candidate :evidence-state :supported
+  :scope "Frontend browser effects"
+  :applies-to [:component/websocket-adapter :component/video-adapter]
+  :implemented-in ["frontend/app/Connection.hs" "frontend/app/Player.hs" "frontend/app/Bindings.hs"]}
+ {:type :evidence :id :evidence/server-tests
+  :text "The server, protocol, and browser suites verify range delivery, validation, ordering, synchronization, and compatibility."
+  :lifecycle :candidate :evidence-state :supported
+  :scope "Ripy verification"
+  :applies-to [:component/fastify-server :component/reflex-network]
+  :implemented-in ["test/" "frontend/test/"]}]

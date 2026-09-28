@@ -1,8 +1,10 @@
 {-# LANGUAGE OverloadedStrings #-}
-module Connection (Connection(..), ConnectionEvent(..), connectRoom) where
+module Connection
+  ( ConnectionEvent(..), ConnectionPhase(..), RoomConnection(..), roomConnection ) where
 
 import Control.Concurrent (forkIO, threadDelay)
 import Control.Monad (forever, void)
+import Control.Monad.IO.Class (liftIO)
 import Data.Aeson (eitherDecodeStrict')
 import qualified Data.ByteString.Lazy as BL
 import Data.IORef
@@ -10,6 +12,7 @@ import Data.Text (Text)
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as TE
 import GHCJS.Types (JSVal)
+import Reflex.Dom
 import Bindings
 import Model
 import Protocol
@@ -20,6 +23,60 @@ data Connection = Connection
 data Session = Session
   { generation :: Int, socket :: Maybe JSVal, calibrated :: Bool, clockOffset :: Double
   , samples :: [ClockSample], pending :: Maybe Double }
+
+data ConnectionPhase = Connecting | Synchronizing | Online | Retrying
+  deriving (Eq, Show)
+
+data RoomConnection t = RoomConnection
+  { connectionEvents :: Event t ConnectionEvent
+  , connectionPhase :: Dynamic t ConnectionPhase
+  , connectionConnected :: Event t ()
+  , connectionSnapshots :: Event t RoomState
+  , connectionErrors :: Event t Text
+  , connectionDisconnected :: Event t ()
+  , connectionServerNow :: IO Double
+  }
+
+-- The IORef here is a resource boundary: it identifies the live WebSocket used
+-- by outgoing effects. Room and presentation state live in the Reflex network.
+roomConnection :: MonadWidget t m => Event t [ClientCommand] -> m (RoomConnection t)
+roomConnection outgoing = do
+  (events, emit) <- newTriggerEvent
+  transport <- liftIO $ newIORef Nothing
+  getPostBuild >>= performEvent_ . fmap (const $ liftIO $ afterMount $ connectRoom emit >>= writeIORef transport . Just)
+  performEvent_ $ ffor outgoing $ liftIO . sendBatch transport
+  phase <- foldDyn phaseAfter Connecting events
+  pure RoomConnection
+    { connectionEvents = events
+    , connectionPhase = phase
+    , connectionConnected = () <$ ffilter isConnected events
+    , connectionSnapshots = fmapMaybe snapshot events
+    , connectionErrors = fmapMaybe connectionError events
+    , connectionDisconnected = () <$ ffilter isDisconnected events
+    , connectionServerNow = maybe now serverNow =<< readIORef transport
+    }
+  where
+    sendBatch ref batch = readIORef ref >>= maybe (pure ()) (\connection -> mapM_ (sendCommand connection) batch)
+    snapshot event = case event of
+      Snapshot state -> Just state
+      _ -> Nothing
+    connectionError event = case event of
+      ConnectionError message -> Just message
+      _ -> Nothing
+    isDisconnected event = case event of
+      Disconnected -> True
+      _ -> False
+    isConnected event = case event of
+      Connected -> True
+      _ -> False
+
+phaseAfter :: ConnectionEvent -> ConnectionPhase -> ConnectionPhase
+phaseAfter event previous = case event of
+  Connected -> Synchronizing
+  Ready -> Online
+  Disconnected -> Retrying
+  Snapshot _ -> previous
+  ConnectionError _ -> previous
 
 -- Every callback carries its connection generation. Replaced sockets cannot mutate state.
 connectRoom :: (ConnectionEvent -> IO ()) -> IO Connection

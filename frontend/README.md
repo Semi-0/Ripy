@@ -20,11 +20,24 @@ Nix `2.35.2`, the version verified in the successful compiler build.
 
 - `src/Protocol.hs`: wire types, explicit JSON mappings and numeric validation.
 - `src/Model.hs`: pure timeline, clamping, clock sampling and snapshot acceptance.
-- `app/View.hs`: Reflex widgets, dynamic display state and explicit intentions.
-- `app/Connection.hs`: sockets, five clock samples, refresh, timeout and reconnect.
-- `app/Player.hs`: movie loading, generation cancellation, playback and drift.
+- `app/Catalog.hs`: catalog callbacks converted into a catalog `Dynamic`.
+- `app/View.hs`: Reflex widgets that emit typed intentions carrying their values.
+- `app/Network.hs`: snapshot acceptance, pure intention reactions and derived UI.
+- `app/Connection.hs`: typed socket events around clock and reconnect resources.
+- `app/Player.hs`: typed video inputs/state around loading, playback and drift resources.
 - `app/Bindings.hs`: small foreign calls to browser APIs, without room policy.
-- `app/Main.hs`: composition, decoded snapshot acceptance and ordered command batches.
+- `app/Main.hs`: recursive composition of the frontend event graph.
+
+`Main.app` holds no application `IORef`. It composes intentions into reactions,
+reactions into commands and local video effects, accepted snapshots into desired
+playback, and current signals into `Ui`. The connection and player adapters keep
+only resource handles, clock samples and asynchronous cancellation generations
+mutable. `acceptSnapshots` is the single room-state fold, and `deriveUi` is a
+pure projection from current signals.
+
+The finite Kiroshi candidate model in `system-model-proposal.edn` records these
+components, effect boundaries and invariants with repository evidence. Every
+fact passes `kiroshi propose` and remains non-persisted pending human review.
 
 The frontend uses GHCJS's browser FFI. These small bindings call APIs such as
 `WebSocket`, `HTMLVideoElement.play()` and fullscreen. No handwritten JavaScript
