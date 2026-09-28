@@ -1,6 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 module Catalog (CatalogState(..), catalogNetwork, catalogMovies, catalogErrors) where
 
+import Control.Monad.IO.Class (liftIO)
 import Data.Aeson (eitherDecodeStrict')
 import Data.Text (Text)
 import qualified Data.Text as T
