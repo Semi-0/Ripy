@@ -56,6 +56,7 @@ app = mdo
         <*> playerState player
         <*> latestError
   intentions <- movieView ui
+  pure ()
 
 enableReaction :: Reaction -> Maybe ()
 enableReaction reaction = case reaction of

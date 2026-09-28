@@ -67,7 +67,7 @@ commands = fmapMaybe nonempty . fmap (foldr collect [])
     nonempty values = Just values
 
 reactionEvent :: Reflex t => (Reaction -> Maybe a) -> Event t [Reaction] -> Event t a
-reactionEvent select = fmapMaybe (firstJust . map select)
+reactionEvent choose = fmapMaybe (firstJust . map choose)
   where
     firstJust = foldr (<|>) Nothing
     (<|>) left right = case left of
@@ -75,8 +75,8 @@ reactionEvent select = fmapMaybe (firstJust . map select)
       Nothing -> right
 
 deriveUi :: CatalogState -> ConnectionPhase -> Maybe RoomState -> PlayerState -> Maybe Text -> Ui
-deriveUi catalog phase room player externalError = Ui
-  { catalog = catalogMovies catalog
+deriveUi catalogState phase room player externalError = Ui
+  { catalog = catalogMovies catalogState
   , selected = maybe "" (maybe "" id . mediaId) room
   , connectionLabel = phaseLabel phase
   , ready = phase == Online
