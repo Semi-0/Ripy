@@ -2,7 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createEmptyRoom, transitionRoom } from '../src/room.js';
 import { decodeAndValidate } from '../src/protocol.js';
-import { positionAt, isNewerState, clampPosition, clockSample, bestClockSample } from '../public/timeline.js';
+import { positionAt } from '../src/timeline.js';
+import { isNewerState, clampPosition, clockSample, bestClockSample } from '../public/timeline.js';
 
 const catalog = new Map([['movie.mp4', {}], ['second.mp4', {}]]);
 const empty = createEmptyRoom('epoch-a', 1000);

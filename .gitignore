@@ -1,6 +1,8 @@
 node_modules/
 .DS_Store
 frontend-dist/
+frontend-dist.previous/
+.reflex-stage-*/
 frontend-result
 dist-newstyle/
 test-results/

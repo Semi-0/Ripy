@@ -1,4 +1,4 @@
-import { positionAt } from '../public/timeline.js';
+import { positionAt } from './timeline.js';
 import { ProtocolError } from './protocol.js';
 
 export function createEmptyRoom(epoch, now) {
