@@ -1,0 +1,37 @@
+name: Reflex frontend
+on:
+  push:
+    branches: [codex/reflex-frontend]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  browser-build:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: cachix/install-nix-action@v31
+        with:
+          extra_nix_config: |
+            substituters = https://cache.nixos.org https://nixcache.reflex-frp.org
+            trusted-public-keys = cache.nixos.org-1:6NCHdD59X431o0gWypbMrAURkbJ16ZPMQFGspcDShjY= ryantrinkle.com-1:JJiAKaRv9mWgpVAz8dwewnZe0AzzEAzPkagE9SP5NWI=
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - name: Compile browser Haskell
+        run: nix-build default.nix -A ghcjs.ripy-frontend -o frontend-result
+      - name: Package browser assets
+        run: node scripts/package-frontend.js frontend-result/bin/ripy-frontend.jsexe
+      - run: npx playwright install --with-deps chromium
+      - name: Verify compiled page through Fastify
+        run: node test/reflex-smoke.js
+      - uses: actions/upload-artifact@v4
+        with:
+          name: reflex-frontend-${{ github.sha }}
+          path: frontend-dist/
+          if-no-files-found: error
+          retention-days: 30
