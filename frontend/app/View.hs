@@ -6,7 +6,7 @@ import qualified Data.Map as Map
 import Data.Text (Text)
 import qualified Data.Text as T
 import Reflex.Dom
-import Protocol
+import Protocol (Movie(..))
 
 data Intent = SelectMovie Text | Start | Stop | SeekTo Text | SetLocalVolume Text | Enable | Fullscreen
   deriving (Eq, Show)
