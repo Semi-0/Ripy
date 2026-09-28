@@ -9,6 +9,14 @@ try {
   const page = await browser.newPage();
   const errors = [];
   page.on('pageerror', error => errors.push(error.message));
+  page.on('console', message => {
+    if (message.text().includes('uncaught exception in Haskell')) {
+      errors.push(message.text());
+      console.error(message.text());
+    } else {
+      // GHCJS reports uncaught thread exceptions through the console.
+    }
+  });
   await page.goto(`${url}/reflex/`);
   await page.locator('[data-reflex-ready="true"]').waitFor();
   assert.match(await page.locator('h1').textContent(), /cloud cinema/);

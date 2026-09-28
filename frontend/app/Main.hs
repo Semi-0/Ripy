@@ -36,7 +36,7 @@ main = mainWidget $ mdo
       Nothing -> pure ()
   postBuild <- getPostBuild
   performEvent_ $ ffor postBuild $ \() -> liftIO $
-    initialize connectionRef playerRef changeUi (sendObserved . pure)
+    B.afterMount $ initialize connectionRef playerRef changeUi (sendObserved . pure)
 
 commandFor :: IORef (Maybe Player) -> ((Ui -> Ui) -> IO ()) -> Intent -> IO [ClientCommand]
 commandFor playerRef change intent = case intent of

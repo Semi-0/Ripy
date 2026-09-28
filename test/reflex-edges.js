@@ -8,15 +8,27 @@ export async function observeSockets(context) {
     window.WebSocket = class extends NativeSocket {
       constructor(...args) {
         super(...args);
+        this.sent = [];
+        this.addEventListener('open', () => { this.openedAt = performance.now(); });
+        this.addEventListener('close', () => { this.closedAt = performance.now(); });
         window.observedSockets.push(this);
         this.addEventListener('message', (event) => {
           const parsed = JSON.parse(event.data);
+          if (parsed.type === 'pong' && window.blockPongs === true) {
+            event.stopImmediatePropagation();
+          } else {
+            // Normal messages reach the production Haskell callback.
+          }
           if (parsed.type === 'state') {
             this.snapshot = parsed;
           } else {
             // Capture only real authoritative snapshots.
           }
         });
+      }
+      send(bytes) {
+        this.sent.push(JSON.parse(bytes));
+        super.send(bytes);
       }
     };
   });
@@ -78,4 +90,27 @@ export async function checkReflexEdges(page) {
   assert.equal(await page.locator('video').evaluate(video => video.currentSrc.endsWith('/test.mp4')), true);
   assert.equal(await page.locator('video').evaluate(video => video.paused), true);
   console.log('PASS delayed obsolete metadata load cannot replace the latest movie');
+  await page.waitForFunction(() => window.observedSockets.at(-1).sent.filter(x => x.type === 'ping').length >= 10,
+    undefined, { timeout: 35000 });
+  const pings = await page.evaluate(() => window.observedSockets.at(-1).sent.filter(x => x.type === 'ping'));
+  assert.equal(pings.length, 10);
+  const firstPing = await page.evaluate(() => window.observedSockets[0].sent.find(x => x.type === 'ping').clientSentAtMs);
+  assert.ok(pings[5].clientSentAtMs - firstPing >= 29000);
+  console.log('PASS five initial clock samples and five-sample refresh after 30 seconds');
+
+  const count = await page.evaluate(() => {
+    window.blockPongs = true;
+    window.observedSockets.at(-1).close();
+    return window.observedSockets.length;
+  });
+  await page.waitForFunction(previousCount => window.observedSockets.length > previousCount &&
+    window.observedSockets.at(-1).readyState === WebSocket.CLOSED, count, { timeout: 12000 });
+  const lifetime = await page.evaluate(() => {
+    const socket = window.observedSockets.at(-1);
+    window.blockPongs = false;
+    return socket.closedAt - socket.openedAt;
+  });
+  assert.ok(lifetime >= 4500 && lifetime < 8000, `Ping timeout: ${lifetime} ms`);
+  await page.waitForFunction(() => !document.querySelector('#play').disabled);
+  console.log('PASS unanswered ping closes after five seconds and reconnect recovers');
 }

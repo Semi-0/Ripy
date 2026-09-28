@@ -1,14 +1,39 @@
 # Reflex migration
 
 This candidate is built on Linux in the `Reflex frontend` GitHub Actions workflow.
-The first milestone is a minimal compiled browser page. The working JavaScript
-application stays at `/` until the full Reflex candidate passes browser parity.
+The minimal compiled page passed CI at commit
+`f1913dafac8f70aea57ab37518415ba077303d73` (run `36482537418`). The working
+JavaScript application stays at `/` until the full Reflex candidate passes
+browser parity.
 
 `default.nix` pins reflex-platform and its compiler/dependency graph by commit.
 The workflow builds `ghcjs.ripy-frontend`, packages the browser JavaScript, and
 loads it in Chromium through the ordinary Fastify server. No Haskell process is
 used to serve the page. A native JSaddle development server is not part of this
-build or runtime.
+build or runtime. The pin is
+`f231e2425ac92339b8491cdd970930d63d9ad1ad`; its transitive package pins include
+Reflex-DOM `5d1dbde4471d7f9be60977b972ab0219026ff5dc`.
+
+## Source responsibilities
+
+- `src/Protocol.hs`: wire types, explicit JSON mappings and numeric validation.
+- `src/Model.hs`: pure timeline, clamping, clock sampling and snapshot acceptance.
+- `app/View.hs`: Reflex widgets, dynamic display state and explicit intentions.
+- `app/Connection.hs`: sockets, five clock samples, refresh, timeout and reconnect.
+- `app/Player.hs`: movie loading, generation cancellation, playback and drift.
+- `app/Bindings.hs`: small foreign calls to browser APIs, without room policy.
+- `app/Main.hs`: composition, decoded snapshot acceptance and ordered command batches.
+
+The frontend uses GHCJS's browser FFI. These small bindings call APIs such as
+`WebSocket`, `HTMLVideoElement.play()` and fullscreen. No handwritten JavaScript
+module implements synchronization. Incoming snapshots do not produce explicit
+user commands. `mergeWith (++)` preserves simultaneous event lists with user
+commands ordered before media-observation commands.
+
+Connection callbacks and asynchronous player work have separate generation
+counters. Closing a socket invalidates its generation immediately. Replacing a
+movie or disconnecting invalidates pending metadata/play effects. Video bytes
+remain independent HTTP requests throughout.
 
 ## Download and install a successful build
 
@@ -37,7 +62,7 @@ installation. Browser assets are ignored by Git; they belong to the CI artifact.
 
 Video bytes use ordinary HTTP, including byte-range requests. WebSockets never
 carry movie bytes. Fastify owns command validation, ordering, revision numbers,
-and the authoritative room. The Haskell frontend will own decoding, clock
+and the authoritative room. The Haskell frontend owns decoding, clock
 estimation, snapshot acceptance, UI intentions, and video effects.
 
 | Transport | Direction | Message |

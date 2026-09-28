@@ -150,6 +150,7 @@ async function runChecks(a, b) {
   assert.equal(await a.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
   await a.screenshot({ path: 'test-results/mobile.png', fullPage: true });
   console.log('PASS rapid movie selection and narrow-screen layout');
+  await a.bringToFront();
   await a.click('#fullscreen');
   await until(a, () => document.fullscreenElement?.id === 'player');
   assert.equal(await a.locator('#pause').isVisible(), true);
@@ -159,6 +160,16 @@ async function runChecks(a, b) {
   await until(a, () => document.fullscreenElement?.id === 'player');
   await a.evaluate(() => document.exitFullscreen());
   console.log('PASS fullscreen entry, shared controls, exit and double-click');
+  await a.evaluate(() => {
+    document.querySelector('#player').requestFullscreen = () => Promise.reject(new Error('Controlled fullscreen rejection'));
+  });
+  await a.click('#fullscreen');
+  await until(a, () => !document.querySelector('#error').hidden);
+  assert.equal(await a.evaluate(() => document.fullscreenElement), null);
+  await a.locator('#volume').fill('0.25');
+  await until(a, () => document.querySelector('video').volume === 0.25);
+  assert.equal(await b.locator('video').evaluate(video => video.volume), 1);
+  console.log('PASS fullscreen error is visible and volume stays local');
 }
 
 try {
@@ -186,6 +197,14 @@ try {
   const b = await context.newPage();
   for (const page of [a, b]) {
     page.on('pageerror', (error) => errors.push(error.message));
+    page.on('console', message => {
+      if (message.text().includes('uncaught exception in Haskell')) {
+        errors.push(message.text());
+        console.error(message.text());
+      } else {
+        // Other browser diagnostics are not application exceptions.
+      }
+    });
     await page.goto(new URL(process.env.FRONTEND_PATH ?? '/', address).href);
     await until(page, () => !document.querySelector('#movies').disabled);
   }

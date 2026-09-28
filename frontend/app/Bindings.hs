@@ -13,6 +13,14 @@ toJS = JS.pack . T.unpack
 fromJS :: JS.JSString -> Text
 fromJS = T.pack . JS.unpack
 
+foreign import javascript unsafe "requestAnimationFrame($1)" nextFrameJS :: Callback (IO ()) -> IO ()
+
+-- Reflex's post-build can precede attachment of the root DocumentFragment.
+afterMount :: IO () -> IO ()
+afterMount action = mdo
+  callback <- asyncCallback $ releaseCallback callback >> action
+  nextFrameJS callback
+
 foreign import javascript unsafe "performance.timeOrigin + performance.now()" now :: IO Double
 foreign import javascript unsafe "String($1)" stringValue :: JSVal -> JS.JSString
 foreign import javascript unsafe "document.getElementById($1)[$2]" numberProperty :: JS.JSString -> JS.JSString -> IO Double
