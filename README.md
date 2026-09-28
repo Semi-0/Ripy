@@ -59,7 +59,14 @@ Configuration is intentionally small:
 PORT=3001 MEDIA_DIRECTORY=/absolute/path/to/movies npm start
 ```
 
-The server always binds to `127.0.0.1`. There is no login system, upload endpoint,
+The server defaults to `127.0.0.1`. To watch from devices on the same local
+network, stop the existing server and run `npm run start:lan`. Open
+`http://YOUR_MAC_LAN_IP:3000` on each device. Keep this Mac awake while watching.
+`HOST` can also select a specific network interface address. LAN mode listens
+on all IPv4 interfaces; anyone who can reach port 3000 can join the room and
+access the movies.
+
+There is no login system, upload endpoint,
 database, Lain integration, transcoding, or public deployment in this example.
 
 ## How it works
