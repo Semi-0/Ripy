@@ -1,7 +1,6 @@
-{-# LANGUAGE OverloadedStrings, RecursiveDo #-}
+{-# LANGUAGE OverloadedStrings #-}
 module Network where
 
-import Control.Monad.Fix (MonadFix)
 import Data.Text (Text)
 import qualified Data.Text as T
 import Text.Read (readMaybe)
@@ -22,17 +21,21 @@ data Reaction
   | RejectIntent Text
   deriving (Eq, Show)
 
-acceptSnapshots :: (Reflex t, MonadHold t m, MonadFix m)
+data SnapshotInput = ResetSnapshots | ReceiveSnapshot RoomState
+
+acceptSnapshots :: (Reflex t, MonadHold t m)
   => Event t () -> Event t RoomState
   -> m (Dynamic t (Maybe RoomState), Event t RoomState)
-acceptSnapshots resets incoming = mdo
-  room <- holdDyn Nothing $ leftmost [Nothing <$ resets, Just <$> accepted]
-  let accepted = attachPromptlyDynWithMaybe acceptFresh room incoming
-  pure (room, accepted)
+acceptSnapshots resets incoming = do
+  room <- foldDynMaybe transition Nothing $ leftmost
+    [ResetSnapshots <$ resets, ReceiveSnapshot <$> incoming]
+  pure (room, fmapMaybe id $ updated room)
   where
-    acceptFresh current candidate = case acceptSnapshot current candidate of
-      Just next | Just next /= current -> Just next
-      _ -> Nothing
+    transition input current = case input of
+      ResetSnapshots -> Just Nothing
+      ReceiveSnapshot candidate -> case acceptSnapshot current candidate of
+        Just next | Just next /= current -> Just $ Just next
+        _ -> Nothing
 
 playbackStates :: Reflex t
   => Dynamic t ConnectionPhase -> Dynamic t (Maybe RoomState) -> Event t RoomState -> Event t RoomState
