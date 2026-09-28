@@ -23,9 +23,7 @@ app = mdo
     (connectionConnected roomLink)
     (connectionSnapshots roomLink)
 
-  let reactions = attachPromptlyDynWith react
-        (playerDuration <$> playerState player) intentions
-      react duration = concatMap $ reactIntent duration
+  let reactions = concatMap reactIntent <$> intentions
       desiredPlayback = playbackStates (connectionPhase roomLink) room accepted
       videoInputs = VideoInputs
         { videoStates = desiredPlayback

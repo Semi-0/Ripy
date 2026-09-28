@@ -6,7 +6,7 @@ import Data.Text (Text)
 import qualified Data.Text as T
 import Text.Read (readMaybe)
 import Reflex
-import Model (acceptSnapshot, clampPosition)
+import Model (acceptSnapshot)
 import Protocol hiding (SelectMovie)
 import qualified Protocol as Protocol
 import View (Intent(..), Ui(..))
@@ -43,12 +43,12 @@ playbackStates phase room accepted = leftmost
   where
     resume snapshot _ = snapshot
 
-reactIntent :: Double -> Intent -> [Reaction]
-reactIntent duration intent = case intent of
+reactIntent :: Intent -> [Reaction]
+reactIntent intent = case intent of
   SelectMovie ident -> [SendCommand $ Protocol.SelectMovie ident]
   Start -> [SendCommand Play]
   Stop -> [SendCommand $ Pause UserPause]
-  SeekTo raw -> either (pure . RejectIntent) (pure . SendCommand . Seek . (`clampPosition` duration)) $ parseNumber "Invalid seek position." raw
+  SeekTo raw -> either (pure . RejectIntent) (pure . SendCommand . Seek . max 0) $ parseNumber "Invalid seek position." raw
   SetLocalVolume raw -> either (pure . RejectIntent) (pure . SetVolume . max 0 . min 1) $ parseNumber "Invalid volume." raw
   Enable -> [EnableVideo]
   Fullscreen -> [ToggleFullscreen]
