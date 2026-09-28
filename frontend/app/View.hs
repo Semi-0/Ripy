@@ -1,4 +1,4 @@
-{-# LANGUAGE OverloadedStrings, FlexibleContexts, RecursiveDo #-}
+{-# LANGUAGE OverloadedStrings, FlexibleContexts #-}
 module View where
 
 import Data.Map (Map)
@@ -31,18 +31,17 @@ movieView ui = elAttr "main" ("data-reflex-ready" =: "true") $ do
       text " cloud cinema"
       elClass "span" "cursor" $ text "_"
     elClass "p" "intro" $ text "Choose a movie. Watch together."
-  chosen <- elClass "section" "toolbar" $ mdo
+  chosen <- elClass "section" "toolbar" $ do
     elAttr "label" ("for" =: "movies") $ text "movie /"
     options <- holdUniqDyn $ (\u -> Map.fromList $ ("", "Choose a movie…") : map (\m -> (movieId m, movieTitle m)) (catalog u)) <$> ui
     selection <- holdUniqDyn $ selected <$> ui
     let disabled u
           | not (ready u) || null (catalog u) = Just ""
           | otherwise = Nothing
-        restore = attachPromptlyDynWith const selection $ ffilter T.null $ _selectElement_change selector
         config = def
           & initialAttributes .~ (("id" =: "movies") <> ("disabled" =: ""))
           & modifyAttributes .~ ((\u -> "disabled" =: disabled u) <$> updated ui)
-          & selectElementConfig_setValue .~ leftmost [updated selection, restore]
+          & selectElementConfig_setValue .~ updated selection
     (selector, _) <- selectElement config $ dyn_ $ ffor options $ \entries ->
       mapM_ (\(ident, title) -> elAttr "option" ("value" =: ident) $ text title) (Map.toList entries)
     elAttr "p" (("id" =: "connection") <> ("role" =: "status")) $ dynText $ connectionLabel <$> ui
