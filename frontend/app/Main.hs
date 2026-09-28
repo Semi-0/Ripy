@@ -1,4 +1,4 @@
-{-# LANGUAGE OverloadedStrings, RecursiveDo #-}
+{-# LANGUAGE OverloadedStrings #-}
 module Main where
 
 import Data.Text (Text)
@@ -16,12 +16,27 @@ main = mainWidget app
 -- observations; the only held values here are accepted room state and display
 -- errors. WebSocket and media resources remain isolated in their adapters.
 app :: MonadWidget t m => m ()
-app = mdo
+app = do
   catalogState <- catalogNetwork
-  roomLink <- roomConnection outgoing
+  roomLink <- roomConnection
   (room, accepted) <- acceptSnapshots
     (connectionConnected roomLink)
     (connectionSnapshots roomLink)
+  (player, controlVideo) <- videoController
+    (catalogMovies <$> catalogState)
+    (connectionServerNow roomLink)
+
+  let externalErrors = leftmost
+        [catalogErrors catalogState, connectionErrors roomLink]
+      errorChanges = leftmost [Just <$> externalErrors, Nothing <$ accepted]
+  latestError <- holdDyn Nothing errorChanges
+  let ui = deriveUi
+        <$> catalogState
+        <*> connectionPhase roomLink
+        <*> room
+        <*> playerState player
+        <*> latestError
+  intentions <- movieView ui
 
   let reactions = concatMap reactIntent <$> intentions
       desiredPlayback = playbackStates (connectionPhase roomLink) room accepted
@@ -31,30 +46,11 @@ app = mdo
         , videoEnableRequests = () <$ reactionEvent enableReaction reactions
         , videoFullscreenRequests = () <$ reactionEvent fullscreenReaction reactions
         , videoVolumes = reactionEvent volumeReaction reactions
+        , videoErrors = reactionEvent rejectedReaction reactions
         }
-
-  player <- videoController
-    (catalogMovies <$> catalogState)
-    (connectionServerNow roomLink)
-    videoInputs
-
-  let outgoing = mergeWith (++) [commands reactions, playerMediaCommands player]
-      externalErrors = leftmost
-        [ catalogErrors catalogState
-        , connectionErrors roomLink
-        , reactionEvent rejectedReaction reactions
-        ]
-      errorChanges = leftmost [Just <$> externalErrors, Nothing <$ accepted]
-
-  latestError <- holdDyn Nothing errorChanges
-  let ui = deriveUi
-        <$> catalogState
-        <*> connectionPhase roomLink
-        <*> room
-        <*> playerState player
-        <*> latestError
-  intentions <- movieView ui
-  pure ()
+      outgoing = mergeWith (++) [commands reactions, playerMediaCommands player]
+  controlVideo videoInputs
+  transmitCommands roomLink outgoing
 
 enableReaction :: Reaction -> Maybe ()
 enableReaction reaction = case reaction of

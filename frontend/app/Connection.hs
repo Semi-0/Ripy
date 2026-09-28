@@ -1,6 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 module Connection
-  ( ConnectionEvent(..), ConnectionPhase(..), RoomConnection(..), roomConnection ) where
+  ( ConnectionEvent(..), ConnectionPhase(..), RoomConnection(..)
+  , roomConnection, transmitCommands ) where
 
 import Control.Concurrent (forkIO, threadDelay)
 import Control.Monad (forever, void)
@@ -35,16 +36,16 @@ data RoomConnection t = RoomConnection
   , connectionErrors :: Event t Text
   , connectionDisconnected :: Event t ()
   , connectionServerNow :: IO Double
+  , connectionSend :: [ClientCommand] -> IO ()
   }
 
 -- The IORef here is a resource boundary: it identifies the live WebSocket used
 -- by outgoing effects. Room and presentation state live in the Reflex network.
-roomConnection :: MonadWidget t m => Event t [ClientCommand] -> m (RoomConnection t)
-roomConnection outgoing = do
+roomConnection :: MonadWidget t m => m (RoomConnection t)
+roomConnection = do
   (events, emit) <- newTriggerEvent
   transport <- liftIO $ newIORef Nothing
   getPostBuild >>= performEvent_ . fmap (const $ liftIO $ afterMount $ connectRoom emit >>= writeIORef transport . Just)
-  performEvent_ $ ffor outgoing $ liftIO . sendBatch transport
   phase <- foldDyn phaseAfter Connecting events
   pure RoomConnection
     { connectionEvents = events
@@ -54,6 +55,7 @@ roomConnection outgoing = do
     , connectionErrors = fmapMaybe connectionError events
     , connectionDisconnected = () <$ ffilter isDisconnected events
     , connectionServerNow = maybe now serverNow =<< readIORef transport
+    , connectionSend = sendBatch transport
     }
   where
     sendBatch ref batch = readIORef ref >>= maybe (pure ()) (\connection -> mapM_ (sendCommand connection) batch)
@@ -69,6 +71,11 @@ roomConnection outgoing = do
     isConnected event = case event of
       Connected -> True
       _ -> False
+
+transmitCommands :: MonadWidget t m
+  => RoomConnection t -> Event t [ClientCommand] -> m ()
+transmitCommands connection outgoing =
+  performEvent_ $ liftIO . connectionSend connection <$> outgoing
 
 phaseAfter :: ConnectionEvent -> ConnectionPhase -> ConnectionPhase
 phaseAfter event previous = case event of

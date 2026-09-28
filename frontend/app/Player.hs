@@ -26,6 +26,7 @@ data VideoInputs t = VideoInputs
   , videoEnableRequests :: Event t ()
   , videoFullscreenRequests :: Event t ()
   , videoVolumes :: Event t Double
+  , videoErrors :: Event t Text
   }
 
 data PlayerEvent
@@ -57,8 +58,9 @@ initialPlayerState = PlayerState "Select a movie to begin." "" False False 0 "0:
 -- Browser callbacks enter as events; only browser-resource handles and
 -- cancellation generations remain mutable inside this adapter.
 videoController :: MonadWidget t m
-  => Dynamic t [Movie] -> IO Double -> VideoInputs t -> m (PlayerNetwork t)
-videoController catalog serverTime inputs = do
+  => Dynamic t [Movie] -> IO Double
+  -> m (PlayerNetwork t, VideoInputs t -> m ())
+videoController catalog serverTime = do
   (events, emit) <- newTriggerEvent
   (mediaCommands, emitMediaCommand) <- newTriggerEvent
   playerRef <- liftIO $ newIORef Nothing
@@ -74,15 +76,17 @@ videoController catalog serverTime inputs = do
         writeIORef playerRef $ Just player
         listen "video" "dblclick" $ toggleFullscreen emit
         void $ forkIO $ forever $ threadDelay 250000 >> emitProgress emit)
-  performEvent_ $ ffor (videoStates inputs) $ \snapshot -> liftIO $ do
-    emit ClearPlayerError
-    withPlayer playerRef (`updatePlayer` snapshot)
-  performEvent_ $ ffor (videoDisconnects inputs) $ const $ liftIO $ withPlayer playerRef disconnectPlayer
-  performEvent_ $ ffor (videoEnableRequests inputs) $ const $ liftIO $ withPlayer playerRef enablePlayback
-  performEvent_ $ ffor (videoFullscreenRequests inputs) $ const $ liftIO $ toggleFullscreen emit
-  performEvent_ $ ffor (videoVolumes inputs) $ liftIO . setNumber "video" "volume"
   state <- foldDyn playerStateAfter initialPlayerState events
-  pure $ PlayerNetwork state mediaCommands
+  let connectInputs inputs = do
+        performEvent_ $ ffor (videoStates inputs) $ \snapshot -> liftIO $ do
+          emit ClearPlayerError
+          withPlayer playerRef (`updatePlayer` snapshot)
+        performEvent_ $ ffor (videoDisconnects inputs) $ const $ liftIO $ withPlayer playerRef disconnectPlayer
+        performEvent_ $ ffor (videoEnableRequests inputs) $ const $ liftIO $ withPlayer playerRef enablePlayback
+        performEvent_ $ ffor (videoFullscreenRequests inputs) $ const $ liftIO $ toggleFullscreen emit
+        performEvent_ $ ffor (videoVolumes inputs) $ liftIO . setNumber "video" "volume"
+        performEvent_ $ ffor (videoErrors inputs) $ liftIO . emit . PlayerError
+  pure (PlayerNetwork state mediaCommands, connectInputs)
 
 withPlayer :: IORef (Maybe Player) -> (Player -> IO ()) -> IO ()
 withPlayer ref action = readIORef ref >>= maybe (pure ()) action
