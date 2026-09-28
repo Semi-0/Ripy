@@ -12,7 +12,7 @@ import Data.Text (Text)
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as TE
 import GHCJS.Types (JSVal)
-import Reflex.Dom
+import Reflex.Dom hiding (now)
 import Bindings
 import Model
 import Protocol

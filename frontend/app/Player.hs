@@ -9,7 +9,7 @@ import Data.IORef
 import Data.List (find)
 import Data.Text (Text)
 import qualified Data.Text as T
-import Reflex.Dom
+import Reflex.Dom hiding (now)
 import Bindings
 import Model
 import Protocol
