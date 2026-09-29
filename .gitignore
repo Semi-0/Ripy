@@ -7,5 +7,6 @@ frontend-result
 frontend-native
 dist-newstyle/
 test-results/
+.certs/
 media/*
 !media/.gitkeep

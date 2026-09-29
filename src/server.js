@@ -65,10 +65,16 @@ export async function buildServer({
   mediaDirectory = defaultMediaDirectory,
   frontendDirectory = defaultFrontendDirectory,
   logger = false,
+  https = undefined,
   now = Date.now,
   voiceIceConfiguration = readVoiceIceConfiguration()
 } = {}) {
-  const app = Fastify({ logger });
+  let app;
+  if (https === undefined) {
+    app = Fastify({ logger });
+  } else {
+    app = Fastify({ logger, https });
+  }
   const catalog = await readMediaCatalog(mediaDirectory);
   const context = { room: createEmptyRoom(randomUUID(), now()), catalog, clients: new Set(), now, log: app.log };
 

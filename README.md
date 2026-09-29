@@ -75,7 +75,35 @@ access the movies.
 
 Movie playback works over LAN HTTP, but browsers expose the microphone only in
 a secure context. `http://localhost` is a special exception; a second device
-opening `http://YOUR_MAC_LAN_IP:3000` needs HTTPS before voice can join.
+opening a LAN IP needs trusted HTTPS before voice can join. Ripy can terminate
+TLS directly when both certificate paths are configured:
+
+```sh
+HTTPS_KEY_PATH=.certs/lan-key.pem \
+HTTPS_CERT_PATH=.certs/lan-cert.pem \
+npm run start:lan
+```
+
+For a private LAN, one way to create a locally trusted certificate is
+[`mkcert`](https://github.com/FiloSottile/mkcert). Replace the example address
+with this Mac's current LAN address:
+
+```sh
+brew install mkcert
+mkcert -install
+mkdir -p .certs
+mkcert -key-file .certs/lan-key.pem -cert-file .certs/lan-cert.pem \
+  localhost 127.0.0.1 ::1 192.168.1.20
+HTTPS_KEY_PATH=.certs/lan-key.pem \
+HTTPS_CERT_PATH=.certs/lan-cert.pem \
+npm run start:lan
+```
+
+Open `https://192.168.1.20:3000` on both devices. The other device must trust
+the mkcert root CA; copying only the site certificate is insufficient. Never
+share `lan-key.pem`. If installing a private CA on the other device is
+undesirable, use a real domain with Caddy/nginx and a publicly trusted
+certificate, or use a private-network service that provides trusted HTTPS.
 
 There is no login system, upload endpoint,
 database, Lain integration, transcoding, or public deployment in this example.
