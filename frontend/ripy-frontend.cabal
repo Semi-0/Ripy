@@ -13,7 +13,7 @@ library
 executable ripy-frontend
   main-is: Main.hs
   hs-source-dirs: app
-  other-modules: Bindings, Catalog, Connection, Network, Player, View
+  other-modules: Bindings, Catalog, Connection, MovieView, Network, Player, View
   build-depends: base >=4.12 && <5, ripy-frontend, reflex-dom, reflex,
                 text, bytestring, aeson, containers, ghcjs-base, transformers
   if !impl(ghcjs)

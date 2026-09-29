@@ -1,103 +1,87 @@
-{-# LANGUAGE OverloadedStrings, FlexibleContexts, RecursiveDo #-}
-module View where
+{-# LANGUAGE FlexibleContexts, OverloadedStrings #-}
+module View
+  ( ButtonView(..), ChoiceView(..), RangeView(..)
+  , buttonView, choiceView, rangeView
+  , dynamicTextView, emptyElementView
+  , conditional, visibleAttributes
+  ) where
 
 import Data.Map (Map)
 import qualified Data.Map as Map
 import Data.Text (Text)
 import Reflex.Dom
-import Protocol (Movie(..))
-import Selection
 
-data Intent = SelectMovie Text | Start | Stop | SeekTo Text | SetLocalVolume Text | Enable | Fullscreen
-  deriving (Eq, Show)
-data Ui = Ui
-  { catalog :: [Movie], selected :: Text, connectionLabel :: Text, ready :: Bool
-  , playable :: Bool, statusLabel :: Text, errorLabel :: Text, needsEnable :: Bool
-  , timeLabel :: Text, fullscreenActive :: Bool }
+data ButtonView = ButtonView
+  { buttonAttributes :: Map Text Text
+  , buttonLabel :: Text
+  , buttonEnabled :: Bool
+  } deriving (Eq, Show)
 
-emptyUi :: Ui
-emptyUi = Ui [] "" "Connecting…" False False "Select a movie to begin." "" False "0:00 / 0:00" False
+data ChoiceView = ChoiceView
+  { choiceOptions :: [(Text, Text)]
+  , choiceEnabled :: Bool
+  } deriving (Eq, Show)
+
+data RangeView = RangeView
+  { rangeEnabled :: Bool
+  } deriving (Eq, Show)
 
 conditional :: Bool -> Map Text Text -> Map Text Text
-conditional True attributes = attributes
-conditional False _ = Map.empty
+conditional condition attributes = case condition of
+  True -> attributes
+  False -> Map.empty
 
-movieView :: MonadWidget t m => Dynamic t Ui -> m (Event t [Intent])
-movieView ui = elAttr "main" ("data-reflex-ready" =: "true") $ do
-  el "header" $ do
-    elClass "p" "eyebrow" $ text "PRIVATE SCREENING / SHARED ROOM"
-    el "h1" $ do
-      el "span" $ text ">"
-      text " cloud cinema"
-      elClass "span" "cursor" $ text "_"
-    elClass "p" "intro" $ text "Choose a movie. Watch together."
-  chosen <- elClass "section" "toolbar" $ do
-    elAttr "label" ("for" =: "movies") $ text "movie /"
-    options <- holdUniqDyn $ (\u -> Map.fromList $ ("", "Choose a movie…") : map (\m -> (movieId m, movieTitle m)) (catalog u)) <$> ui
-    authoritative <- holdUniqDyn $ selected <$> ui
-    rec let selectionUpdates = leftmost
-              [ConfirmedSelection <$> updated authoritative, RequestedSelection <$> requested]
-            selectionWrites = attachPromptlyDynWithMaybe selectionWriteAfter control selectionUpdates
-        control <- foldDyn selectionAfter emptySelection selectionUpdates
-        let disabled u
-              | not (ready u) || null (catalog u) = Just ""
-              | otherwise = Nothing
-            config = def
-              & initialAttributes .~ (("id" =: "movies") <> ("disabled" =: ""))
-              & modifyAttributes .~ ((\u -> "disabled" =: disabled u) <$> updated ui)
-              & selectElementConfig_setValue .~ selectionWrites
-        (selector, _) <- selectElement config $ dyn_ $ ffor options $ \entries ->
-          mapM_ (\(ident, title) -> elAttr "option" ("value" =: ident) $ text title) (Map.toList entries)
-        let requested = _selectElement_change selector
-    elAttr "p" (("id" =: "connection") <> ("role" =: "status")) $ dynText $ connectionLabel <$> ui
-    pure $ fmapMaybe (fmap (pure . SelectMovie) . nonempty) requested
-  elDynAttr "p" ((\u -> ("id" =: "empty") <> conditional (not $ null $ catalog u) ("hidden" =: "")) <$> ui) $
-    text "No movies yet. Add an MP4 to media/, restart the server, and refresh."
-  actions <- elAttr "section" (("id" =: "player") <> ("aria-label" =: "Movie player and controls")) $ do
-    full <- elClass "div" "player-bar" $ do
-      el "span" $ text "SCREEN / 01"
-      let attributes u = Map.fromList [("id", "fullscreen"), ("aria-pressed", pressed $ fullscreenActive u)]
-          pressed True = "true"
-          pressed False = "false"
-          label True = "[ exit fullscreen ]"
-          label False = "[ fullscreen ]"
-      (button, _) <- elDynAttr' "button" (attributes <$> ui) $ dynText $ label . fullscreenActive <$> ui
-      pure $ [Fullscreen] <$ domEvent Click button
-    elClass "section" "screen" $ do
-      elAttr "video" (Map.fromList [("id","video"),("playsinline",""),("preload","auto"),("aria-label","Shared movie")]) blank
-      elClass "div" "screen-caption" $ text "[ waiting for a movie ]"
-    shared <- controls ui
-    (enable, _) <- elDynAttr' "button" ((\u -> ("id" =: "enable") <> conditional (not $ needsEnable u) ("hidden" =: "")) <$> ui) $ text "Enable playback"
-    elAttr "p" (("id" =: "status") <> ("role" =: "status")) $ dynText $ statusLabel <$> ui
-    elDynAttr "p" ((\u -> Map.fromList [("id","error"),("role","alert")] <> conditional (errorLabel u == "") ("hidden" =: "")) <$> ui) $ dynText $ errorLabel <$> ui
-    pure $ mergeWith (++) [shared, full, [Enable] <$ domEvent Click enable]
-  el "footer" $ text "Play, pause, and seek are shared. Volume is yours. Open this address in another browser window to join."
-  pure $ mergeWith (++) [chosen, actions]
+visibleAttributes :: Map Text Text -> Bool -> Map Text Text
+visibleAttributes attributes visible =
+  attributes <> conditional (not visible) ("hidden" =: "")
 
-controls :: MonadWidget t m => Dynamic t Ui -> m (Event t [Intent])
-controls ui = elClass "section" "controls" $ do
-  let disabled ident u = ("id" =: ident) <> conditional (not $ playable u) ("disabled" =: "")
-  (play, _) <- elDynAttr' "button" (disabled "play" <$> ui) $ text "Play"
-  (pause, _) <- elDynAttr' "button" (disabled "pause" <$> ui) $ text "Pause"
-  elAttr "label" (("class" =: "seek-label") <> ("for" =: "seek")) $ do
-    text "Timeline "
-    elAttr "output" ("id" =: "time") $ dynText $ timeLabel <$> ui
-  let seekAttrs = Map.fromList
-        [("id","seek"),("type","range"),("min","0"),("step","0.1"),("aria-label","Seek movie"),("disabled","")]
-      seekDisabled u
-        | playable u = Nothing
-        | otherwise = Just ""
-  seek <- inputElement $ def
-    & inputElementConfig_elementConfig . elementConfig_initialAttributes .~ seekAttrs
-    & inputElementConfig_elementConfig . elementConfig_modifyAttributes .~ ((\u -> "disabled" =: seekDisabled u) <$> updated ui)
-  elAttr "label" (("class" =: "volume-label") <> ("for" =: "volume")) $ text "Your volume"
-  volume <- inputElement $ def & inputElementConfig_initialValue .~ "1"
-    & inputElementConfig_elementConfig . elementConfig_initialAttributes .~ Map.fromList [("id","volume"),("type","range"),("min","0"),("max","1"),("step","0.05")]
-  pure $ mergeWith (++) [[Start] <$ domEvent Click play, [Stop] <$ domEvent Click pause,
-    pure . SeekTo <$> _inputElement_input seek, pure . SetLocalVolume <$> _inputElement_input volume]
+buttonView :: MonadWidget t m => Dynamic t ButtonView -> m (Event t ())
+buttonView model = do
+  stable <- holdUniqDyn model
+  (button, _) <- elDynAttr' "button" (attributes <$> stable) $
+    dynText $ buttonLabel <$> stable
+  pure $ () <$ domEvent Click button
+  where
+    attributes view = buttonAttributes view <>
+      conditional (not $ buttonEnabled view) ("disabled" =: "")
 
+choiceView :: MonadWidget t m
+  => Map Text Text -> Dynamic t ChoiceView -> Event t Text -> m (Event t Text)
+choiceView initial model writes = do
+  options <- holdUniqDyn $ choiceOptions <$> model
+  enabled <- holdUniqDyn $ choiceEnabled <$> model
+  let config = def
+        & initialAttributes .~ initial
+        & modifyAttributes .~ (disabledChange <$> updated enabled)
+        & selectElementConfig_setValue .~ writes
+  (selector, _) <- selectElement config $ dyn_ $ ffor options $
+    mapM_ choiceOption
+  pure $ _selectElement_change selector
+  where
+    choiceOption (ident, label) =
+      elAttr "option" ("value" =: ident) $ text label
 
-nonempty :: Text -> Maybe Text
-nonempty value = case value == "" of
+rangeView :: MonadWidget t m
+  => Map Text Text -> Text -> Dynamic t RangeView -> m (Event t Text)
+rangeView initial initialValue model = do
+  enabled <- holdUniqDyn $ rangeEnabled <$> model
+  input <- inputElement $ def
+    & inputElementConfig_initialValue .~ initialValue
+    & inputElementConfig_elementConfig . elementConfig_initialAttributes .~ initial
+    & inputElementConfig_elementConfig . elementConfig_modifyAttributes
+      .~ (disabledChange <$> updated enabled)
+  pure $ _inputElement_input input
+
+dynamicTextView :: MonadWidget t m
+  => Text -> Map Text Text -> Dynamic t Text -> m ()
+dynamicTextView element attributes value = do
+  stable <- holdUniqDyn value
+  elAttr element attributes $ dynText stable
+
+emptyElementView :: MonadWidget t m => Text -> Map Text Text -> m ()
+emptyElementView element attributes = elAttr element attributes blank
+
+disabledChange :: Bool -> Map Text (Maybe Text)
+disabledChange enabled = Map.singleton "disabled" $ case enabled of
   True -> Nothing
-  False -> Just value
+  False -> Just ""
