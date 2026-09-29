@@ -12,7 +12,7 @@ import Data.Text (Text)
 import Reflex.Dom
 
 data ButtonView = ButtonView
-  { buttonAttributes :: Map Text Text
+  { buttonAttributes :: Map AttributeName Text
   , buttonLabel :: Text
   , buttonEnabled :: Bool
   } deriving (Eq, Show)
@@ -26,12 +26,12 @@ data RangeView = RangeView
   { rangeEnabled :: Bool
   } deriving (Eq, Show)
 
-conditional :: Bool -> Map Text Text -> Map Text Text
+conditional :: Bool -> Map AttributeName Text -> Map AttributeName Text
 conditional condition attributes = case condition of
   True -> attributes
   False -> Map.empty
 
-visibleAttributes :: Map Text Text -> Bool -> Map Text Text
+visibleAttributes :: Map AttributeName Text -> Bool -> Map AttributeName Text
 visibleAttributes attributes visible =
   attributes <> conditional (not visible) ("hidden" =: "")
 
@@ -46,7 +46,10 @@ buttonView model = do
       conditional (not $ buttonEnabled view) ("disabled" =: "")
 
 choiceView :: MonadWidget t m
-  => Map Text Text -> Dynamic t ChoiceView -> Event t Text -> m (Event t Text)
+  => Map AttributeName Text
+  -> Dynamic t ChoiceView
+  -> Event t Text
+  -> m (Event t Text)
 choiceView initial model writes = do
   options <- holdUniqDyn $ choiceOptions <$> model
   enabled <- holdUniqDyn $ choiceEnabled <$> model
@@ -62,7 +65,10 @@ choiceView initial model writes = do
       elAttr "option" ("value" =: ident) $ text label
 
 rangeView :: MonadWidget t m
-  => Map Text Text -> Text -> Dynamic t RangeView -> m (Event t Text)
+  => Map AttributeName Text
+  -> Text
+  -> Dynamic t RangeView
+  -> m (Event t Text)
 rangeView initial initialValue model = do
   enabled <- holdUniqDyn $ rangeEnabled <$> model
   input <- inputElement $ def
@@ -73,15 +79,16 @@ rangeView initial initialValue model = do
   pure $ _inputElement_input input
 
 dynamicTextView :: MonadWidget t m
-  => Text -> Map Text Text -> Dynamic t Text -> m ()
+  => Text -> Map AttributeName Text -> Dynamic t Text -> m ()
 dynamicTextView element attributes value = do
   stable <- holdUniqDyn value
   elAttr element attributes $ dynText stable
 
-emptyElementView :: MonadWidget t m => Text -> Map Text Text -> m ()
+emptyElementView :: MonadWidget t m
+  => Text -> Map AttributeName Text -> m ()
 emptyElementView element attributes = elAttr element attributes blank
 
-disabledChange :: Bool -> Map Text (Maybe Text)
+disabledChange :: Bool -> Map AttributeName (Maybe Text)
 disabledChange enabled = Map.singleton "disabled" $ case enabled of
   True -> Nothing
   False -> Just ""

@@ -162,22 +162,22 @@ enableButton model = ButtonView
   , buttonEnabled = True
   }
 
-emptyAttributes :: MovieViewModel -> Map Text Text
+emptyAttributes :: MovieViewModel -> Map AttributeName Text
 emptyAttributes model =
   visibleAttributes ("id" =: "empty") (null $ movieOptions model)
 
-errorAttributes :: MovieViewModel -> Map Text Text
+errorAttributes :: MovieViewModel -> Map AttributeName Text
 errorAttributes model = visibleAttributes
   (Map.fromList [("id", "error"), ("role", "alert")])
   (errorText model /= "")
 
-seekAttributes :: Map Text Text
+seekAttributes :: Map AttributeName Text
 seekAttributes = Map.fromList
   [ ("id", "seek"), ("type", "range"), ("min", "0"), ("step", "0.1")
   , ("aria-label", "Seek movie"), ("disabled", "")
   ]
 
-volumeAttributes :: Map Text Text
+volumeAttributes :: Map AttributeName Text
 volumeAttributes = Map.fromList
   [ ("id", "volume"), ("type", "range"), ("min", "0"), ("max", "1")
   , ("step", "0.05")
