@@ -26,6 +26,10 @@ Nix `2.35.2`, the version verified in the successful compiler build.
 - `app/Connection.hs`: typed socket events around clock and reconnect resources.
 - `app/Player.hs`: typed video inputs/state around loading, playback and drift resources.
 - `app/Bindings.hs`: small foreign calls to browser APIs, without room policy.
+- `src/VoiceProtocol.hs`: explicit JSON types for the independent voice protocol.
+- `app/Voice.hs`: voice FRP state plus private WebRTC resource handles.
+- `app/VoiceView.hs`: behavior-free voice presentation built from generic atoms.
+- `app/VoiceBindings.hs`: small microphone, audio and WebRTC browser calls.
 - `app/Main.hs`: recursive composition of the frontend event graph.
 
 `Main.app` holds no application `IORef`. It composes intentions into reactions,
@@ -49,6 +53,12 @@ Connection callbacks and asynchronous player work have separate generation
 counters. Closing a socket invalidates its generation immediately. Replacing a
 movie or disconnecting invalidates pending metadata/play effects. Video bytes
 remain independent HTTP requests throughout.
+
+Voice is a second network with no dependency on `Player`, `Connection`,
+`Network`, or movie protocol types. `Main` is the specialization point that
+connects raw voice view signals to `VoiceInputs`. The voice adapter keeps only
+live browser resource handles, queued ICE, and callback generations mutable;
+phase, mute, and autoplay-recovery state are folded in Reflex.
 
 ## Download and install a successful build
 
@@ -89,6 +99,9 @@ estimation, snapshot acceptance, UI intentions, and video effects.
 | WebSocket `/room` | browser → server | `select`, `play`, `pause`, `seek`, `ping` |
 | WebSocket `/room` | server → browsers | full `state` snapshot |
 | WebSocket `/room` | server → requesting browser | `pong` or `error` |
+| HTTP | browser → server | `GET /api/voice/ice` |
+| WebSocket `/voice` | browser ↔ server | `offer`, `answer`, `ice`, `leave` and pairing events |
+| WebRTC | browser ↔ browser or TURN | Opus audio track |
 
 ```json
 {"type":"select","mediaId":"453.MP4"}

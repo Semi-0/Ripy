@@ -12,6 +12,9 @@ import Network
 import Player
 import Protocol hiding (SelectMovie)
 import qualified Protocol as Protocol
+import View
+import Voice
+import VoiceView
 
 main :: IO ()
 main = mainWidget app
@@ -39,7 +42,13 @@ app = do
         <*> room
         <*> playerState player
         <*> latestError
-  signals <- movieView presentation
+  (voice, controlVoice) <- voiceController
+  (signals, voiceSignals) <- elAttr "main" ("data-reflex-ready" =: "true") $ do
+    movieSignals <- movieView presentation
+    callSignals <- voiceView $ voicePresentation <$> voiceState voice
+    el "footer" $ text
+      "Movie controls are shared. Volume and voice mute are local. Voice travels directly between the two browsers."
+    pure (movieSignals, callSignals)
 
   let reactions = specializeMovieSignals signals
       desiredPlayback = playbackStates (connectionPhase roomLink) room accepted
@@ -54,6 +63,65 @@ app = do
       outgoing = mergeWith (++) [commands reactions, playerMediaCommands player]
   controlVideo videoInputs
   transmitCommands roomLink outgoing
+  let muteRequests = attachPromptlyDynWith
+        (\state _ -> not $ voiceMuted state)
+        (voiceState voice)
+        (mutePressed voiceSignals)
+  controlVoice VoiceInputs
+    { voiceJoinRequests = joinPressed voiceSignals
+    , voiceLeaveRequests = leavePressed voiceSignals
+    , voiceMuteRequests = muteRequests
+    , voiceEnableRequests = enableAudioPressed voiceSignals
+    }
+
+voicePresentation :: VoiceState -> VoiceViewModel
+voicePresentation state = VoiceViewModel
+  { joinButton = ButtonView ("id" =: "voice-join") "Join voice" $ canJoin phase
+  , leaveButton = ButtonView ("id" =: "voice-leave") "Leave voice" $ isActive phase
+  , muteButton = ButtonView
+      (("id" =: "voice-mute") <> ("aria-pressed" =: pressed (voiceMuted state)))
+      (if voiceMuted state then "Unmute" else "Mute")
+      (isActive phase)
+  , enableAudioButton = ButtonView
+      (visibleAttributes ("id" =: "voice-enable") $ voiceNeedsEnable state)
+      "Enable voice audio"
+      True
+  , voiceStatusText = voicePhaseLabel phase
+  , voiceErrorText = voiceErrorMessage state
+  }
+  where
+    phase = voicePhase state
+    pressed value = if value then "true" else "false"
+
+canJoin :: VoicePhase -> Bool
+canJoin phase = case phase of
+  VoiceIdle -> True
+  VoiceFailed _ -> True
+  VoiceRequestingMicrophone -> False
+  VoiceConnecting -> False
+  VoiceWaiting -> False
+  VoiceConnected -> False
+  VoiceReconnecting -> False
+
+isActive :: VoicePhase -> Bool
+isActive phase = case phase of
+  VoiceIdle -> False
+  VoiceFailed _ -> False
+  VoiceRequestingMicrophone -> True
+  VoiceConnecting -> True
+  VoiceWaiting -> True
+  VoiceConnected -> True
+  VoiceReconnecting -> True
+
+voicePhaseLabel :: VoicePhase -> Text
+voicePhaseLabel phase = case phase of
+  VoiceIdle -> "OFFLINE"
+  VoiceRequestingMicrophone -> "REQUESTING MICROPHONE"
+  VoiceConnecting -> "CONNECTING"
+  VoiceWaiting -> "WAITING FOR FRIEND"
+  VoiceConnected -> "CONNECTED"
+  VoiceReconnecting -> "RECONNECTING"
+  VoiceFailed _ -> "FAILED"
 
 specializeMovieSignals :: Reflex t => MovieSignals t -> Event t [Reaction]
 specializeMovieSignals signals = mergeWith (++)

@@ -14,12 +14,31 @@ function imports(moduleName) {
 
 test('atomic View has no application or domain dependencies', async () => {
   const view = await source('frontend/app/View.hs');
-  for (const moduleName of ['Catalog', 'Connection', 'MovieView', 'Network', 'Player', 'Protocol', 'Selection']) {
+  for (const moduleName of ['Catalog', 'Connection', 'MovieView', 'Network', 'Player', 'Protocol', 'Selection', 'Voice', 'VoiceView']) {
     assert.doesNotMatch(view, imports(moduleName));
   }
   assert.match(view, /^buttonView ::/m);
   assert.match(view, /^choiceView ::/m);
   assert.match(view, /^rangeView ::/m);
+});
+
+test('VoiceView composes presentation without behavior dependencies', async () => {
+  const voiceView = await source('frontend/app/VoiceView.hs');
+  for (const moduleName of ['Catalog', 'Connection', 'MovieView', 'Network', 'Player', 'Protocol', 'Voice', 'VoiceProtocol']) {
+    assert.doesNotMatch(voiceView, imports(moduleName));
+  }
+  assert.doesNotMatch(voiceView, /\b(?:RTCPeerConnection|VoiceSignal|VoicePhase)\b/);
+  assert.match(voiceView, /^data VoiceSignals t/m);
+});
+
+test('voice behavior is independent from the movie player and room', async () => {
+  const voice = await source('frontend/app/Voice.hs');
+  const player = await source('frontend/app/Player.hs');
+  for (const moduleName of ['Connection', 'MovieView', 'Network', 'Player', 'Protocol']) {
+    assert.doesNotMatch(voice, imports(moduleName));
+  }
+  assert.doesNotMatch(player, imports('Voice'));
+  assert.match(voice, /^voiceController ::/m);
 });
 
 test('MovieView composes presentation without behavior dependencies', async () => {
@@ -37,9 +56,11 @@ test('Network does not depend on presentation modules', async () => {
   assert.doesNotMatch(network, imports('MovieView'));
 });
 
-test('Main is the movie behavior specialization boundary', async () => {
+test('Main is the movie and voice behavior specialization boundary', async () => {
   const main = await source('frontend/app/Main.hs');
   assert.match(main, /^specializeMovieSignals ::/m);
   assert.match(main, /Protocol\.SelectMovie/);
   assert.match(main, /playerMediaCommands/);
+  assert.match(main, /^voicePresentation ::/m);
+  assert.match(main, /controlVoice VoiceInputs/);
 });

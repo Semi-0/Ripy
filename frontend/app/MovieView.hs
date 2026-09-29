@@ -45,15 +45,13 @@ emptyMovieViewModel = MovieViewModel
   "" False "0:00 / 0:00" False
 
 movieView :: MonadWidget t m => Dynamic t MovieViewModel -> m (MovieSignals t)
-movieView model = elAttr "main" ("data-reflex-ready" =: "true") $ do
+movieView model = do
   movieHeader
   selectedEvent <- movieChooser model
   elDynAttr "p" (emptyAttributes <$> model) $
     text "No movies yet. Add an MP4 to media/, restart the server, and refresh."
   (playEvent, pauseEvent, seekEvent, volumeEvent, enableEvent, fullscreenEvent) <-
     playerView model
-  el "footer" $ text
-    "Play, pause, and seek are shared. Volume is yours. Open this address in another browser window to join."
   pure MovieSignals
     { movieSelected = selectedEvent
     , playPressed = playEvent

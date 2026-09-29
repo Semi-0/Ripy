@@ -6,6 +6,7 @@ import qualified Data.ByteString.Lazy.Char8 as BL
 import Protocol
 import Model
 import Selection
+import VoiceProtocol
 
 check :: String -> Bool -> IO ()
 check label result = unless result $ fail label
@@ -62,4 +63,29 @@ main = do
       case eitherDecode bytes :: Either String ServerMessage of
         Left _ -> pure ()
         Right _ -> fail "invalid server message accepted"
-  putStrLn "PASS Haskell JSON, timeline, clocks, epochs, stale snapshots, selection control and bounds"
+  forM_
+    [ (VoiceOffer "offer-sdp", "{\"sdp\":\"offer-sdp\",\"type\":\"offer\"}")
+    , (VoiceAnswer "answer-sdp", "{\"sdp\":\"answer-sdp\",\"type\":\"answer\"}")
+    , (VoiceIce $ IceCandidate "candidate:1" (Just "0") (Just 0),
+        "{\"candidate\":\"candidate:1\",\"sdpMLineIndex\":0,\"sdpMid\":\"0\",\"type\":\"ice\"}")
+    , (VoiceLeave, "{\"type\":\"leave\"}")
+    ] $ \(signal, expected) -> case encodeVoiceSignal signal of
+      Left _ -> fail "valid voice signal rejected"
+      Right bytes -> check "voice wire compatibility" $ (decode bytes :: Maybe Value) == decode expected
+  forM_ [VoiceOffer "", VoiceIce $ IceCandidate "" Nothing Nothing] $ \signal ->
+    case encodeVoiceSignal signal of
+      Left _ -> pure ()
+      Right _ -> fail "invalid voice signal encoded"
+  check "decode waiting" $
+    eitherDecode "{\"type\":\"waiting\"}" == Right VoiceWaiting
+  check "decode peer role" $
+    eitherDecode "{\"type\":\"peer-ready\",\"role\":\"offerer\"}" == Right (VoicePeerReady Offerer)
+  check "decode ICE response" $
+    eitherDecode "{\"iceServers\":[{\"urls\":[\"stun:voice.example\"]}],\"expiresAt\":null}" ==
+      Right (VoiceIceResponse [IceServer ["stun:voice.example"] Nothing Nothing] Nothing)
+  forM_ ["{\"type\":\"peer-ready\",\"role\":\"unknown\"}",
+    "{\"type\":\"ice\",\"candidate\":\"\",\"sdpMid\":null,\"sdpMLineIndex\":0}"] $ \bytes ->
+      case eitherDecode bytes :: Either String VoiceServerMessage of
+        Left _ -> pure ()
+        Right _ -> fail "invalid voice server message accepted"
+  putStrLn "PASS Haskell movie and voice JSON, timeline, clocks, epochs, stale snapshots, selection control and bounds"

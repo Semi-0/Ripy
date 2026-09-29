@@ -30,7 +30,46 @@ async function checkTogether(a, b, paused) {
   assert.ok(Math.abs(left.position - right.position) < 0.6, JSON.stringify({ left, right }));
 }
 
+async function checkVoice(a, b) {
+  await a.click('#voice-join');
+  await until(a, () => document.querySelector('#voice-status').textContent === 'WAITING FOR FRIEND');
+  await b.click('#voice-join');
+  for (const page of [a, b]) {
+    await until(page, () => document.querySelector('#voice-status').textContent === 'CONNECTED');
+    await until(page, () => document.querySelector('#voice-audio').srcObject !== null);
+  }
+  assert.equal(await a.locator('#movies').inputValue(), '');
+  assert.equal(await b.locator('#movies').inputValue(), '');
+
+  await a.click('#voice-mute');
+  assert.equal(await a.locator('#voice-mute').getAttribute('aria-pressed'), 'true');
+  assert.equal(await b.locator('#voice-mute').getAttribute('aria-pressed'), 'false');
+  await a.click('#voice-mute');
+  assert.equal(await a.locator('#voice-mute').getAttribute('aria-pressed'), 'false');
+
+  await b.click('#voice-leave');
+  await until(b, () => document.querySelector('#voice-status').textContent === 'OFFLINE');
+  await until(a, () => document.querySelector('#voice-status').textContent === 'WAITING FOR FRIEND');
+  await b.evaluate(() => {
+    const audio = document.querySelector('#voice-audio');
+    const original = audio.play.bind(audio);
+    audio.play = () => {
+      audio.play = original;
+      return Promise.reject(new DOMException('Test voice autoplay block', 'NotAllowedError'));
+    };
+  });
+  await b.click('#voice-join');
+  for (const page of [a, b]) {
+    await until(page, () => document.querySelector('#voice-status').textContent === 'CONNECTED');
+  }
+  await b.locator('#voice-enable').waitFor({ state: 'visible' });
+  await b.click('#voice-enable');
+  await b.locator('#voice-enable').waitFor({ state: 'hidden' });
+  console.log('PASS independent peer voice, local mute, leave/rejoin and autoplay recovery');
+}
+
 async function runChecks(a, b) {
+  await checkVoice(a, b);
   await a.selectOption('#movies', 'test.mp4');
   await until(a, () => !document.querySelector('#play').disabled);
   await until(b, () => !document.querySelector('#play').disabled);
@@ -123,7 +162,10 @@ async function runChecks(a, b) {
   await until(a, () => !document.querySelector('#play').disabled);
   await until(b, () => !document.querySelector('#play').disabled);
   await checkTogether(a, b, false);
-  console.log('PASS disconnection pauses locally, then reconnect catches up');
+  for (const page of [a, b]) {
+    await until(page, () => document.querySelector('#voice-status').textContent === 'CONNECTED');
+  }
+  console.log('PASS movie and voice transports reconnect independently');
 
   await a.click('#pause');
   await a.locator('#seek').fill('29.5');
@@ -190,7 +232,14 @@ try {
   await copyFile(join(directory, 'test.mp4'), join(directory, 'alternate.mp4'));
   app = await buildServer({ mediaDirectory: directory });
   const address = await app.listen({ host: '127.0.0.1', port: 0 });
-  const launchOptions = { headless: true, args: ['--autoplay-policy=no-user-gesture-required'] };
+  const launchOptions = {
+    headless: true,
+    args: [
+      '--autoplay-policy=no-user-gesture-required',
+      '--use-fake-device-for-media-stream',
+      '--use-fake-ui-for-media-stream'
+    ]
+  };
   if (process.env.BROWSER_CHANNEL === 'chromium') {
     // CI uses Playwright's installed Chromium; local runs retain system Chrome.
   } else {
@@ -225,6 +274,8 @@ try {
         console.error('Browser failure state:', await page.evaluate(() => {
           const video = document.querySelector('video');
           return { status: document.querySelector('#status')?.textContent, error: document.querySelector('#error')?.textContent,
+            voiceStatus: document.querySelector('#voice-status')?.textContent,
+            voiceError: document.querySelector('#voice-error')?.textContent,
             source: video?.currentSrc, position: video?.currentTime, readyState: video?.readyState, paused: video?.paused,
             snapshot: window.observedSockets?.at(-1)?.snapshot };
         }));

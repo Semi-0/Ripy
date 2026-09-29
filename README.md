@@ -1,8 +1,9 @@
 # Ripy — cloud cinema
 
-A small movie website you own: Fastify serves MP4 files, and one shared
-WebSocket room coordinates two browser players. Either viewer can select a
-movie, play, pause, or seek. Volume remains local. The frontend is written in
+A small movie website you own: Fastify serves MP4 files, one shared WebSocket
+room coordinates two browser players, and an independent WebRTC connection
+carries a private two-person voice call. Either viewer can select a movie,
+play, pause, or seek. Volume and microphone mute remain local. The frontend is written in
 Haskell with Reflex-DOM and compiled to browser JavaScript by Linux CI. The
 server stays JavaScript; Node.js alone runs the installed application.
 
@@ -48,6 +49,10 @@ ffmpeg -f lavfi -i testsrc2=size=640x360:rate=24 -f lavfi -i sine=frequency=220:
 
 The webpage explains where to add files when the catalog is empty. Browser
 autoplay restrictions may require each viewer to click **Enable playback**.
+Voice is opt-in: each viewer clicks **Join voice** and grants microphone
+permission. **Leave voice** closes the peer connection and stops that browser's
+microphone tracks. Movie playback continues when voice joins, leaves, or
+reconnects.
 
 Use **[ fullscreen ]** or double-click the video to expand the player and shared
 controls. Use **[ exit fullscreen ]** or Escape to leave fullscreen. This is
@@ -66,6 +71,10 @@ network, stop the existing server and run `npm run start:lan`. Open
 on all IPv4 interfaces; anyone who can reach port 3000 can join the room and
 access the movies.
 
+Movie playback works over LAN HTTP, but browsers expose the microphone only in
+a secure context. `http://localhost` is a special exception; a second device
+opening `http://YOUR_MAC_LAN_IP:3000` needs HTTPS before voice can join.
+
 There is no login system, upload endpoint,
 database, Lain integration, transcoding, or public deployment in this example.
 
@@ -77,6 +86,9 @@ Browser A ── HTTP byte ranges ──┐
 Browser B ── HTTP byte ranges ──┘
 
 Browser A ◀── commands/state ──▶ Shared room ◀── commands/state ──▶ Browser B
+
+Browser A ◀────── WebRTC audio, peer to peer ──────▶ Browser B
+           └── `/voice` signaling via Fastify ──┘
 ```
 
 - `src/catalog.js`: reads approved files and creates public movie URLs.
@@ -84,18 +96,29 @@ Browser A ◀── commands/state ──▶ Shared room ◀── commands/stat
 - `src/protocol.js`: validates incoming commands and produces precise errors.
 - `src/server.js`: HTTP delivery and WebSocket effects; owns the in-memory room.
 - `src/timeline.js`: pure authoritative server timeline calculation.
+- `src/voice-protocol.js`: strict bounded SDP and ICE message validation.
+- `src/voice-room.js`: two-person role assignment and signaling relay.
+- `src/voice-ice.js`: STUN configuration and expiring TURN credentials.
 - `frontend/src/Protocol.hs`: explicit Aeson protocol encoders and decoders.
 - `frontend/src/Model.hs`: pure position, revision, epoch and clock calculations.
 - `frontend/app/View.hs`: Reflex-DOM interface and user intentions.
 - `frontend/app/Connection.hs`: sockets, clock sampling, timeout and reconnection.
 - `frontend/app/Player.hs`: media effects, cancellation, drift and recovery.
 - `frontend/app/Bindings.hs`: small browser API bindings.
+- `frontend/src/VoiceProtocol.hs`: explicit voice signaling and ICE JSON types.
+- `frontend/app/Voice.hs`: independent voice FRP network and resource boundary.
+- `frontend/app/VoiceView.hs`: behavior-free composition of generic view atoms.
+- `frontend/app/VoiceBindings.hs`: small WebRTC and microphone browser bindings.
 - `frontend/app/Main.hs`: composition and ordered command batches.
 - `public/style.css`: monochrome terminal styling; no handwritten JS application remains.
 
 The movie bytes never pass through WebSockets. `@fastify/static` handles HTTP
 range requests, allowing the browser to request a portion and seek without
 first downloading the entire file. Each viewer receives their own stream.
+
+Voice audio does not pass through Fastify. Fastify only pairs two clients and
+relays SDP/ICE signaling. The browser sends media directly to the other browser,
+or through TURN when direct connectivity fails.
 
 The server processes commands in arrival order and broadcasts complete room
 snapshots. When a movie is playing, its target position is:
@@ -134,8 +157,10 @@ HTTP endpoints:
 | `GET /assets/style.css` | Monochrome stylesheet |
 | `GET /reflex/...` | Compiled Haskell assets (also available as a preview page) |
 | `GET /api/movies` | `{ "movies": [{ "id", "title", "url" }] }` |
+| `GET /api/voice/ice` | Browser ICE servers and short-lived TURN credentials |
 | `GET /media/:filename` | Approved MP4; supports `Range` / `206` responses |
 | WebSocket `/room` | Room state, commands, ping/pong, errors |
+| WebSocket `/voice` | Two-person WebRTC signaling |
 
 Browser-to-server messages:
 
@@ -188,6 +213,20 @@ Errors include `INVALID_MESSAGE`, `UNKNOWN_MEDIA`, `NO_MEDIA`, and
 4 KiB maximum size. Cross-origin browser WebSocket connections are rejected;
 this is a local-demo safeguard, not authentication.
 
+Voice signaling uses:
+
+```json
+{"type":"offer","sdp":"..."}
+{"type":"answer","sdp":"..."}
+{"type":"ice","candidate":"...","sdpMid":"0","sdpMLineIndex":0}
+{"type":"leave"}
+```
+
+The server assigns the first participant `offerer` and the second `answerer`.
+It sends `waiting`, `peer-ready`, relayed `offer`/`answer`/`ice`, `peer-left`,
+or an `error`. A third participant receives `ROOM_FULL`. SDP is limited to
+32 KiB and ICE candidates to 4 KiB.
+
 ## Verify
 
 ```sh
@@ -201,7 +240,7 @@ late joining, reconnection snapshots, catalog restrictions, range responses,
 blocked traversal paths, artifact validation and frontend serving. All original
 11 JavaScript tests passed before removal of the legacy browser modules. The two
 client-only calculation tests moved to Haskell with the functions they exercise;
-the server tests remain. The final Node suite contains 12 tests.
+the server tests remain. The current Node suite contains 22 tests.
 
 Linux CI also runs the Haskell model tests, feeds actual Fastify snapshots into
 the Haskell decoder, and sends Haskell-encoded commands through the JavaScript
@@ -214,7 +253,9 @@ ephemeral localhost server, and checks two headless Chrome pages. It verifies
 shared playback/seek, late joins, reconnection, and the end of a movie. Buffering
 and autoplay rejection are controlled simulations. It also checks drift correction,
 startup stalls, movie-selection reset, narrow layouts, fullscreen and local
-volume. Additional checks inject malformed/stale snapshots and new epochs,
+volume. It also uses fake microphone devices to verify two-person WebRTC audio,
+local mute, leave/rejoin, voice autoplay recovery, and signaling reconnection
+without changing movie state. Additional checks inject malformed/stale snapshots and new epochs,
 delay an obsolete metadata request, dispatch events from a closed socket,
 observe the 30-second clock refresh and suppress pongs to trigger the five-second
 timeout. Screenshots are written to
@@ -232,6 +273,25 @@ protection to **both video URLs and room connections**, such as a shared login
 implemented by your proxy or a private VPN. Protect the catalog and webpage as
 well. Configure trusted proxy/origin handling for the chosen HTTPS deployment;
 the current origin check assumes direct localhost HTTP access.
+
+Voice also requires HTTPS/WSS and a TURN server for reliable Netherlands–Taiwan
+connectivity. Ripy is ready for a coturn-style shared secret:
+
+```sh
+VOICE_STUN_URLS=stun:turn.example.com:3478 \
+VOICE_TURN_URLS=turn:turn.example.com:3478?transport=udp,turns:turn.example.com:5349?transport=tcp \
+VOICE_TURN_SHARED_SECRET='replace-with-coturn-static-auth-secret' \
+VOICE_TURN_TTL_SECONDS=3600 \
+npm start
+```
+
+Comma separates multiple URLs. `VOICE_TURN_URLS` and
+`VOICE_TURN_SHARED_SECRET` must be configured together. The server derives
+temporary HMAC-SHA1 credentials and returns them with `cache-control: no-store`;
+the shared secret stays on the server. Configure the same secret in coturn,
+restrict relay ports in the firewall, and test from both homes. TURN bandwidth
+is separate from movie delivery and is much smaller for audio, but it still
+uses server transfer when direct peer connectivity fails.
 
 Use a process supervisor, persistent media storage, and monitor disk space and
 outbound transfer. A 5 Mbps movie watched by two people uses roughly 10 Mbps

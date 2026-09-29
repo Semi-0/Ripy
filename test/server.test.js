@@ -124,6 +124,12 @@ test('invalid messages return errors without advancing state, ping is private', 
   }
   a.socket.send('{');
   assert.equal((await a.next()).code, 'INVALID_MESSAGE');
+  a.socket.send(JSON.stringify({ type: 'play', padding: 'x'.repeat(4096) }));
+  assert.deepEqual(await a.next(), {
+    type: 'error',
+    code: 'INVALID_MESSAGE',
+    message: 'Message exceeds 4 KiB.'
+  });
   a.send({ type: 'ping', clientSentAtMs: 200 });
   assert.deepEqual(await a.next(), { type: 'pong', clientSentAtMs: 200, serverTimeMs: 1000 });
   const b = await peer(app, t);

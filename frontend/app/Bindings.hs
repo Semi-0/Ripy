@@ -56,8 +56,8 @@ fetchCatalog done = mdo
   fetchCatalogJS success failure
 
 foreign import javascript unsafe
-  "new WebSocket((function(){switch(location.protocol){case 'https:':return 'wss://';case 'http:':return 'ws://';default:throw new Error('Unsupported protocol');}})() + location.host + '/room')"
-  newSocket :: IO JSVal
+  "new WebSocket((function(){switch(location.protocol){case 'https:':return 'wss://';case 'http:':return 'ws://';default:throw new Error('Unsupported protocol');}})() + location.host + $1)"
+  newSocketAt :: JS.JSString -> IO JSVal
 foreign import javascript unsafe
   "$1.onopen = $2; $1.onmessage = function(e){$3(e.data);}; $1.onclose = $4; $1.onerror = function(){$1.close();};"
   watchSocket :: JSVal -> Callback (IO ()) -> Callback (JSVal -> IO ()) -> Callback (IO ()) -> IO ()
@@ -66,9 +66,9 @@ foreign import javascript unsafe "$1.send($2)" socketSend :: JSVal -> JS.JSStrin
 foreign import javascript unsafe "$1.close()" socketClose :: JSVal -> IO ()
 foreign import javascript unsafe "$1.onopen = null; $1.onmessage = null; $1.onclose = null; $1.onerror = null;" unwatchSocket :: JSVal -> IO ()
 
-connectSocket :: IO () -> (Text -> IO ()) -> IO () -> IO JSVal
-connectSocket opened message closed = mdo
-  socket <- newSocket
+connectSocketAt :: Text -> IO () -> (Text -> IO ()) -> IO () -> IO JSVal
+connectSocketAt path opened message closed = mdo
+  socket <- newSocketAt $ toJS path
   onOpen <- asyncCallback opened
   onMessage <- asyncCallback1 $ message . fromJS . stringValue
   onClose <- asyncCallback $ do
@@ -79,6 +79,9 @@ connectSocket opened message closed = mdo
     closed
   watchSocket socket onOpen onMessage onClose
   pure socket
+
+connectSocket :: IO () -> (Text -> IO ()) -> IO () -> IO JSVal
+connectSocket = connectSocketAt "/room"
 
 foreign import javascript unsafe
   "try{document.getElementById('video').play().then(function(){$1('');},function(e){$1(e.name + ': ' + e.message);});}catch(e){$1(e.name + ': ' + e.message);}"

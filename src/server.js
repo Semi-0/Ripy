@@ -8,6 +8,8 @@ import { join } from 'node:path';
 import { readMediaCatalog } from './catalog.js';
 import { decodeAndValidate, ProtocolError } from './protocol.js';
 import { createEmptyRoom, transitionRoom } from './room.js';
+import { createVoiceIceResponse, readVoiceIceConfiguration } from './voice-ice.js';
+import { createVoiceRoom } from './voice-room.js';
 
 const publicDirectory = fileURLToPath(new URL('../public/', import.meta.url));
 export const defaultMediaDirectory = fileURLToPath(new URL('../media/', import.meta.url));
@@ -22,6 +24,12 @@ function send(socket, message) {
 }
 
 function handleMessage(socket, bytes, context) {
+  if (bytes.length > 4096) {
+    send(socket, { type: 'error', code: 'INVALID_MESSAGE', message: 'Message exceeds 4 KiB.' });
+    return;
+  } else {
+    // Continue with the original room protocol limit.
+  }
   try {
     const command = decodeAndValidate(bytes);
     switch (command.type) {
@@ -47,7 +55,19 @@ function handleMessage(socket, bytes, context) {
   }
 }
 
-export async function buildServer({ mediaDirectory = defaultMediaDirectory, frontendDirectory = defaultFrontendDirectory, logger = false, now = Date.now } = {}) {
+function sameOrigin(request) {
+  const origin = request.headers.origin;
+  const expectedOrigin = `${request.protocol}://${request.headers.host}`;
+  return origin === undefined || origin === expectedOrigin;
+}
+
+export async function buildServer({
+  mediaDirectory = defaultMediaDirectory,
+  frontendDirectory = defaultFrontendDirectory,
+  logger = false,
+  now = Date.now,
+  voiceIceConfiguration = readVoiceIceConfiguration()
+} = {}) {
   const app = Fastify({ logger });
   const catalog = await readMediaCatalog(mediaDirectory);
   const context = { room: createEmptyRoom(randomUUID(), now()), catalog, clients: new Set(), now, log: app.log };
@@ -60,7 +80,8 @@ export async function buildServer({ mediaDirectory = defaultMediaDirectory, fron
   } else {
     app.log.warn('Install a verified Reflex artifact before opening the movie page. See frontend/README.md.');
   }
-  await app.register(websocket, { options: { maxPayload: 4096 } });
+  const voiceRoom = createVoiceRoom({ log: app.log });
+  await app.register(websocket, { options: { maxPayload: 64 * 1024 } });
 
   app.get('/', async (_request, reply) => {
     if (hasFrontend) {
@@ -70,6 +91,10 @@ export async function buildServer({ mediaDirectory = defaultMediaDirectory, fron
     }
   });
   app.get('/api/movies', async () => ({ movies: [...catalog.values()] }));
+  app.get('/api/voice/ice', async (_request, reply) => {
+    reply.header('cache-control', 'no-store');
+    return createVoiceIceResponse(voiceIceConfiguration, now);
+  });
   app.get('/media/:filename', async (request, reply) => {
     if (!catalog.has(request.params.filename)) {
       return reply.code(404).send({ error: 'Movie is unavailable.' });
@@ -80,9 +105,7 @@ export async function buildServer({ mediaDirectory = defaultMediaDirectory, fron
 
   app.get('/room', { websocket: true }, (socket, request) => {
     // Keep this unauthenticated local demo unavailable to cross-origin webpages.
-    const origin = request.headers.origin;
-    const expectedOrigin = `${request.protocol}://${request.headers.host}`;
-    if (origin !== undefined && origin !== expectedOrigin) {
+    if (!sameOrigin(request)) {
       socket.close(1008, 'Cross-origin connections are not allowed.');
     } else {
       context.clients.add(socket);
@@ -90,6 +113,17 @@ export async function buildServer({ mediaDirectory = defaultMediaDirectory, fron
       socket.on('close', () => context.clients.delete(socket));
       socket.on('error', (error) => app.log.warn(error));
       send(socket, context.room);
+    }
+  });
+  app.get('/voice', { websocket: true }, (socket, request) => {
+    if (!sameOrigin(request)) {
+      socket.close(1008, 'Cross-origin connections are not allowed.');
+    } else if (voiceRoom.join(socket)) {
+      socket.on('message', (bytes) => voiceRoom.receive(socket, bytes));
+      socket.on('close', () => voiceRoom.leave(socket));
+      socket.on('error', (error) => app.log.warn(error));
+    } else {
+      // join already reported and closed a full room.
     }
   });
   return app;
