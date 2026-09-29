@@ -45,6 +45,7 @@ async function checkVoice(a, b) {
   await until(a, () => document.querySelector('#voice-mute').getAttribute('aria-pressed') === 'true');
   assert.equal(await a.locator('#voice-mute').getAttribute('aria-pressed'), 'true');
   assert.equal(await b.locator('#voice-mute').getAttribute('aria-pressed'), 'false');
+  await b.waitForTimeout(1000);
   await until(b, () => Math.abs(document.querySelector('video').volume - 1) < 0.001);
   const roomRevision = await a.evaluate(() => window.roomSockets().at(-1).snapshot.revision);
   await a.locator('#volume').fill('0.8');
