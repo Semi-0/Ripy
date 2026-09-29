@@ -59,7 +59,8 @@ choiceView initial model writes = do
         & selectElementConfig_setValue .~ writes
   (selector, _) <- selectElement config $ dyn_ $ ffor options $
     mapM_ choiceOption
-  pure $ _selectElement_change selector
+  pure $ tagPromptlyDyn (_selectElement_value selector) $
+    domEvent Input $ _selectElement_element selector
   where
     choiceOption (ident, label) =
       elAttr "option" ("value" =: ident) $ text label
