@@ -21,6 +21,38 @@ async function playback(page) {
   return page.locator('video').evaluate((video) => ({ paused: video.paused, position: video.currentTime }));
 }
 
+async function emulateSafariRemoteAudioStats(page) {
+  await page.addInitScript(() => {
+    const originalGetStats = RTCPeerConnection.prototype.getStats;
+    RTCPeerConnection.prototype.getStats = async function (...args) {
+      const reports = await originalGetStats.apply(this, args);
+      const transformed = new Map();
+      reports.forEach((report, key) => {
+        const inboundAudio = report.type === 'inbound-rtp'
+          && (report.kind === 'audio' || report.mediaType === 'audio')
+          && !report.isRemote;
+        if (inboundAudio) {
+          const inbound = { ...report };
+          const track = { type: 'track', remoteSource: true };
+          for (const field of ['audioLevel', 'totalAudioEnergy', 'totalSamplesDuration']) {
+            if (Number.isFinite(report[field])) {
+              track[field] = report[field];
+              delete inbound[field];
+            } else {
+              // Preserve absence of an unsupported statistic.
+            }
+          }
+          transformed.set(key, inbound);
+          transformed.set(`${key}-safari-track`, track);
+        } else {
+          transformed.set(key, report);
+        }
+      });
+      return transformed;
+    };
+  });
+}
+
 async function checkTogether(a, b, paused) {
   for (const page of [a, b]) {
     await page.waitForFunction((expected) => document.querySelector('video').paused === expected, paused);
@@ -275,6 +307,7 @@ try {
   await observeSockets(context);
   const a = await context.newPage();
   const b = await context.newPage();
+  await emulateSafariRemoteAudioStats(a);
   for (const page of [a, b]) {
     page.on('pageerror', (error) => errors.push(error.message));
     page.on('console', message => {
