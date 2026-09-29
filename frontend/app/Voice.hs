@@ -236,10 +236,11 @@ startPeer runtime emit version role = do
 sendCandidate
   :: IORef VoiceRuntime -> (VoiceEvent -> IO ()) -> Int -> Text -> IO ()
 sendCandidate runtime emit version raw = alive runtime version $
-  case eitherDecodeStrict' (TE.encodeUtf8 raw) of
+  case decodeLocalCandidate raw of
     Left message -> failVoice runtime emit $
-      "Invalid local ICE candidate: " <> T.pack message
-    Right candidateValue -> sendVoice runtime emit $ VoiceIce candidateValue
+      "Invalid local ICE candidate: " <> message
+    Right Nothing -> pure ()
+    Right (Just candidateValue) -> sendVoice runtime emit $ VoiceIce candidateValue
 
 receiveIce
   :: IORef VoiceRuntime -> (VoiceEvent -> IO ()) -> Int -> IceCandidate -> IO ()

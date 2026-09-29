@@ -103,6 +103,17 @@ main = do
     case encodeVoiceSignal signal of
       Left _ -> pure ()
       Right _ -> fail "invalid voice signal encoded"
+  check "decode local ICE candidate" $
+    decodeLocalCandidate "{\"candidate\":\"candidate:1\",\"sdpMid\":\"0\",\"sdpMLineIndex\":0}" ==
+      Right (Just $ IceCandidate "candidate:1" (Just "0") (Just 0))
+  check "ignore Safari end-of-candidates marker" $
+    decodeLocalCandidate "{\"candidate\":\"\",\"sdpMid\":null,\"sdpMLineIndex\":null}" == Right Nothing
+  forM_
+    [ "{\"candidate\":\"candidate:1\",\"sdpMLineIndex\":-1}"
+    , "{\"candidate\":7,\"sdpMid\":null,\"sdpMLineIndex\":null}"
+    ] $ \raw -> case decodeLocalCandidate raw of
+      Left _ -> pure ()
+      Right _ -> fail "invalid local ICE candidate accepted"
   check "decode waiting" $
     eitherDecode "{\"type\":\"waiting\"}" == Right VoiceWaiting
   check "decode peer role" $

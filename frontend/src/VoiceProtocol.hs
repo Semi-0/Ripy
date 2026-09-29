@@ -3,10 +3,12 @@ module VoiceProtocol where
 
 import Control.Monad (unless)
 import Data.Aeson
-import Data.Aeson.Types (Parser)
+import Data.Aeson.Types (Parser, parseEither)
+import Data.Bifunctor (first)
 import qualified Data.ByteString.Lazy as BL
 import Data.Text (Text)
 import qualified Data.Text as T
+import qualified Data.Text.Encoding as TE
 
 data VoiceRole = Offerer | Answerer deriving (Eq, Show)
 
@@ -84,10 +86,29 @@ parseCandidate :: Object -> Parser IceCandidate
 parseCandidate obj = do
   value <- IceCandidate <$> obj .: "candidate" <*> obj .:? "sdpMid" <*> obj .:? "sdpMLineIndex"
   unless (validText (4 * 1024) $ candidate value) $ fail "Invalid ICE candidate"
+  validateCandidateMetadata value
+  pure value
+
+validateCandidateMetadata :: IceCandidate -> Parser ()
+validateCandidateMetadata value = do
   unless (maybe True (validText 256) $ sdpMid value) $ fail "Invalid ICE media identifier"
   unless (maybe True (\index -> index >= 0 && index <= 65535) $ sdpMLineIndex value) $
     fail "Invalid ICE media index"
-  pure value
+
+decodeLocalCandidate :: Text -> Either Text (Maybe IceCandidate)
+decodeLocalCandidate raw = case eitherDecodeStrict' (TE.encodeUtf8 raw) of
+  Left message -> Left $ T.pack message
+  Right value -> first T.pack $ parseEither parseLocalCandidate value
+
+parseLocalCandidate :: Value -> Parser (Maybe IceCandidate)
+parseLocalCandidate = withObject "IceCandidate" $ \obj -> do
+  value <- IceCandidate <$> obj .: "candidate" <*> obj .:? "sdpMid" <*> obj .:? "sdpMLineIndex"
+  validateCandidateMetadata value
+  case T.null $ candidate value of
+    True -> pure Nothing
+    False -> do
+      unless (validText (4 * 1024) $ candidate value) $ fail "Invalid ICE candidate"
+      pure $ Just value
 
 parseSdp :: Object -> Parser Text
 parseSdp obj = do
