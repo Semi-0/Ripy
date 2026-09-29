@@ -73,16 +73,16 @@ createVoicePeer configuration stream onIce onPlayback onState = mdo
   pure $ BrowserPeer peer close
 
 foreign import javascript unsafe
-  "$1.createOffer().then(function(d){return $1.setLocalDescription(d).then(function(){$2(d.sdp);});}).catch(function(e){$3(e.name + ': ' + e.message);});"
+  "$1.createOffer().then(function(d){return $1.setLocalDescription(d).then(function(){return d.sdp;});}).then($2,function(e){$3(e.name + ': ' + e.message);});"
   makeVoiceOfferJS :: JSVal -> Callback (JSVal -> IO ()) -> Callback (JSVal -> IO ()) -> IO ()
 foreign import javascript unsafe
-  "$1.setRemoteDescription({type:'offer',sdp:$2}).then(function(){return $1.createAnswer();}).then(function(d){return $1.setLocalDescription(d).then(function(){$3(d.sdp);});}).catch(function(e){$4(e.name + ': ' + e.message);});"
+  "$1.setRemoteDescription({type:'offer',sdp:$2}).then(function(){return $1.createAnswer();}).then(function(d){return $1.setLocalDescription(d).then(function(){return d.sdp;});}).then($3,function(e){$4(e.name + ': ' + e.message);});"
   answerVoiceOfferJS :: JSVal -> JS.JSString -> Callback (JSVal -> IO ()) -> Callback (JSVal -> IO ()) -> IO ()
 foreign import javascript unsafe
-  "$1.setRemoteDescription({type:'answer',sdp:$2}).then(function(){$3('');}).catch(function(e){$3(e.name + ': ' + e.message);});"
+  "$1.setRemoteDescription({type:'answer',sdp:$2}).then(function(){$3('');},function(e){$3(e.name + ': ' + e.message);});"
   acceptVoiceAnswerJS :: JSVal -> JS.JSString -> Callback (JSVal -> IO ()) -> IO ()
 foreign import javascript unsafe
-  "$1.addIceCandidate(JSON.parse($2)).then(function(){$3('');}).catch(function(e){$3(e.name + ': ' + e.message);});"
+  "$1.addIceCandidate(JSON.parse($2)).then(function(){$3('');},function(e){$3(e.name + ': ' + e.message);});"
   addVoiceCandidateJS :: JSVal -> JS.JSString -> Callback (JSVal -> IO ()) -> IO ()
 
 textResult
