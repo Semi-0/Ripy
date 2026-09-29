@@ -98,6 +98,13 @@ async function runChecks(a, b) {
   await until(b, () => !document.querySelector('video').paused);
   await checkTogether(a, b, false);
   console.log('PASS late join while playing');
+  await until(a, () => document.querySelector('#voice-status').textContent === 'WAITING FOR FRIEND');
+  await until(b, () => document.querySelector('#voice-status').textContent === 'OFFLINE');
+  await b.click('#voice-join');
+  for (const page of [a, b]) {
+    await until(page, () => document.querySelector('#voice-status').textContent === 'CONNECTED');
+  }
+  console.log('PASS voice remains explicit after page reload and can rejoin');
 
   // A controlled media event verifies policy independently from real network speed.
   await until(b, () => !document.querySelector('video').seeking);
