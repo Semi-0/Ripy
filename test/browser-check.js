@@ -42,9 +42,11 @@ async function checkVoice(a, b) {
   assert.equal(await b.locator('#movies').inputValue(), '');
 
   await a.click('#voice-mute');
+  await until(a, () => document.querySelector('#voice-mute').getAttribute('aria-pressed') === 'true');
   assert.equal(await a.locator('#voice-mute').getAttribute('aria-pressed'), 'true');
   assert.equal(await b.locator('#voice-mute').getAttribute('aria-pressed'), 'false');
   await a.click('#voice-mute');
+  await until(a, () => document.querySelector('#voice-mute').getAttribute('aria-pressed') === 'false');
   assert.equal(await a.locator('#voice-mute').getAttribute('aria-pressed'), 'false');
 
   await b.click('#voice-leave');
