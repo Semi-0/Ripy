@@ -57,7 +57,7 @@ foreign import javascript unsafe
   startRemoteLevelMonitorJS :: JSVal -> Callback (JSVal -> IO ()) -> IO JSVal
 foreign import javascript unsafe "$1.stop()"
   stopRemoteLevelMonitorJS :: JSVal -> IO ()
-foreign import javascript unsafe "$1"
+foreign import javascript unsafe "Number($1)"
   remoteLevelValue :: JSVal -> Double
 
 createVoicePeer
