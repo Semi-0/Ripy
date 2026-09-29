@@ -261,13 +261,19 @@ async function runChecks(a, b) {
   await a.bringToFront();
   await a.click('#fullscreen');
   await until(a, () => document.fullscreenElement?.id === 'player');
-  assert.equal(await a.locator('#pause').isVisible(), true);
-  await a.click('#fullscreen');
+  assert.equal(await a.locator('.player-bar').isVisible(), false);
+  assert.equal(await a.locator('.controls').isVisible(), false);
+  assert.equal(await a.locator('#status').isVisible(), false);
+  assert.equal(await a.locator('.screen').evaluate((screen) => {
+    const bounds = screen.getBoundingClientRect();
+    return Math.abs(bounds.width - innerWidth) < 1 && Math.abs(bounds.height - innerHeight) < 1;
+  }), true);
+  await a.locator('video').dblclick();
   await until(a, () => document.fullscreenElement === null);
   await a.locator('video').dblclick();
   await until(a, () => document.fullscreenElement?.id === 'player');
   await a.evaluate(() => document.exitFullscreen());
-  console.log('PASS fullscreen entry, shared controls, exit and double-click');
+  console.log('PASS cinema fullscreen hides interface, fills viewport and exits by double-click');
   await a.evaluate(() => {
     document.querySelector('#player').requestFullscreen = () => Promise.reject(new Error('Controlled fullscreen rejection'));
   });

@@ -46,10 +46,9 @@ input[type=range] { width: 100%; margin: 0; accent-color: #ddd; }
 #voice-error { flex-basis: 100%; margin: 2px 0 0; color: #fff; border-left: 2px solid #fff; padding-left: 12px; font-size: 12px; }
 #voice-audio { display: none; }
 footer { line-height: 1.8; margin-top: 28px; border-top: 1px dashed #444; padding-top: 18px; }
-#player:fullscreen { display: flex; flex-direction: column; width: 100%; height: 100%; padding: 12px 20px; overflow: auto; }
-#player:fullscreen .player-bar, #player:fullscreen .controls, #player:fullscreen #status, #player:fullscreen #error, #player:fullscreen #enable { flex-shrink: 0; }
-#player:fullscreen .screen { flex: 1; min-height: 0; aspect-ratio: auto; }
-#player:fullscreen #enable { align-self: flex-start; }
+#player:fullscreen { width: 100vw; height: 100vh; padding: 0; overflow: hidden; background: #000; }
+#player:fullscreen > :not(.screen) { display: none !important; }
+#player:fullscreen .screen { width: 100%; height: 100%; border: 0; aspect-ratio: auto; }
 #player::backdrop { background: #000; }
 [hidden] { display: none !important; }
 @media (max-width: 600px) {
@@ -60,5 +59,4 @@ footer { line-height: 1.8; margin-top: 28px; border-top: 1px dashed #444; paddin
   .voice-heading { align-items: flex-start; flex-direction: column; }
   #voice-status { text-align: left; }
   .voice-controls button { flex: 1 1 130px; }
-  #player:fullscreen { padding: 8px; }
 }
