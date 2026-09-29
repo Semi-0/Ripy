@@ -5,6 +5,7 @@ import { randomUUID } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
+import { createAccessControl } from './access-control.js';
 import { readMediaCatalog } from './catalog.js';
 import { decodeAndValidate, ProtocolError } from './protocol.js';
 import { createEmptyRoom, transitionRoom } from './room.js';
@@ -58,7 +59,26 @@ function handleMessage(socket, bytes, context) {
 function sameOrigin(request) {
   const origin = request.headers.origin;
   const expectedOrigin = `${request.protocol}://${request.headers.host}`;
-  return origin === undefined || origin === expectedOrigin;
+  if (origin === undefined || origin === expectedOrigin) {
+    return true;
+  } else if (origin === 'null' && request.headers['sec-fetch-site'] === 'same-origin') {
+    return true;
+  } else {
+    return false;
+  }
+}
+
+function loginPage(message = '') {
+  const feedback = message === '' ? '' : `<p role="alert">${message}</p>`;
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Ripy / Private screening</title><style>:root{color-scheme:dark;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;background:#0b0b0b;color:#e5e5e5}*{box-sizing:border-box}body{margin:0;min-height:100vh;display:grid;place-items:center;padding:24px}main{width:min(440px,100%);border-top:1px solid #777;padding-top:18px}small,p{color:#aaa}h1{font-size:30px;font-weight:500}label{display:grid;gap:8px;font-size:12px}input,button{width:100%;border:1px solid #555;border-radius:0;background:#111;color:inherit;padding:12px;font:inherit}button{margin-top:14px;background:#e5e5e5;color:#111;cursor:pointer}p[role=alert]{border-left:2px solid #fff;padding-left:12px;color:#fff}</style></head><body><main><small>PRIVATE SCREENING / AUTHORIZATION</small><h1>Ripy<span aria-hidden="true">_</span></h1><p>Enter the shared room password to continue.</p>${feedback}<form method="post" action="/auth/login"><label for="password">Room password<input id="password" name="password" type="password" autocomplete="current-password" required autofocus maxlength="1024"></label><button type="submit">Enter screening</button></form></main></body></html>`;
+}
+
+function loginHeaders(reply) {
+  return reply
+    .header('cache-control', 'no-store')
+    .header('content-security-policy', "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; frame-ancestors 'none'")
+    .header('referrer-policy', 'no-referrer')
+    .header('x-frame-options', 'DENY');
 }
 
 export async function buildServer({
@@ -67,6 +87,8 @@ export async function buildServer({
   logger = false,
   https = undefined,
   now = Date.now,
+  accessPassword = undefined,
+  accessSessionTtlMs = undefined,
   voiceIceConfiguration = readVoiceIceConfiguration()
 } = {}) {
   let app;
@@ -74,6 +96,32 @@ export async function buildServer({
     app = Fastify({ logger });
   } else {
     app = Fastify({ logger, https });
+  }
+  const access = createAccessControl({ password: accessPassword, now, sessionTtlMs: accessSessionTtlMs });
+  const secureCookies = https !== undefined;
+  if (access.enabled) {
+    app.addContentTypeParser('application/x-www-form-urlencoded',
+      { parseAs: 'string', bodyLimit: 2048 }, (_request, body, done) => {
+        try {
+          const values = new URLSearchParams(body);
+          done(null, { password: values.get('password') });
+        } catch (error) {
+          done(error);
+        }
+      });
+    app.addHook('onRequest', async (request, reply) => {
+      const path = new URL(request.raw.url, 'http://ripy.invalid').pathname;
+      const publicRequest = path === '/login' || path === '/auth/login' || path.startsWith('/assets/');
+      if (publicRequest || access.authenticated(request.headers.cookie)) {
+        return;
+      } else if (path === '/' && request.method === 'GET') {
+        return reply.code(303).header('location', '/login').send();
+      } else {
+        return reply.code(401).header('cache-control', 'no-store').send({ error: 'Authentication required.' });
+      }
+    });
+  } else {
+    // Preserve the password-free localhost prototype unless ROOM_PASSWORD is configured.
   }
   const catalog = await readMediaCatalog(mediaDirectory);
   const context = { room: createEmptyRoom(randomUUID(), now()), catalog, clients: new Set(), now, log: app.log };
@@ -88,6 +136,49 @@ export async function buildServer({
   }
   const voiceRoom = createVoiceRoom({ log: app.log });
   await app.register(websocket, { options: { maxPayload: 64 * 1024 } });
+
+  app.get('/login', async (request, reply) => {
+    if (!access.enabled) {
+      return reply.code(303).header('location', '/').send();
+    } else if (access.authenticated(request.headers.cookie)) {
+      return reply.code(303).header('location', '/').send();
+    } else {
+      return loginHeaders(reply).type('text/html; charset=utf-8').send(loginPage());
+    }
+  });
+  app.post('/auth/login', { bodyLimit: 2048 }, async (request, reply) => {
+    if (!access.enabled) {
+      return reply.code(404).send({ error: 'Password access is not configured.' });
+    } else if (!sameOrigin(request)) {
+      return reply.code(403).send({ error: 'Cross-origin login is not allowed.' });
+    } else {
+      const result = access.login(request.body?.password, request.ip);
+      switch (result.status) {
+        case 'authenticated':
+          return loginHeaders(reply)
+            .header('set-cookie', access.sessionCookie(result.token, secureCookies))
+            .code(303).header('location', '/').send();
+        case 'limited':
+          return loginHeaders(reply).header('retry-after', String(result.retryAfterSeconds))
+            .code(429).type('text/html; charset=utf-8')
+            .send(loginPage('Too many attempts. Wait five minutes and try again.'));
+        case 'invalid':
+          return loginHeaders(reply).code(401).type('text/html; charset=utf-8')
+            .send(loginPage('The room password is incorrect.'));
+        default:
+          throw new Error('Unsupported access result.');
+      }
+    }
+  });
+  app.post('/auth/logout', async (request, reply) => {
+    if (!access.enabled) {
+      return reply.code(404).send({ error: 'Password access is not configured.' });
+    } else {
+      access.logout(request.headers.cookie);
+      return reply.header('set-cookie', access.expiredCookie(secureCookies))
+        .code(303).header('location', '/login').send();
+    }
+  });
 
   app.get('/', async (_request, reply) => {
     if (hasFrontend) {

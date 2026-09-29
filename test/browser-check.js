@@ -21,6 +21,18 @@ async function playback(page) {
   return page.locator('video').evaluate((video) => ({ paused: video.paused, position: video.currentTime }));
 }
 
+async function enterPrivateScreening(page, address) {
+  await page.goto(new URL('/', address).href);
+  assert.equal(new URL(page.url()).pathname, '/login');
+  await page.locator('#password').fill('browser screening password');
+  const [response] = await Promise.all([
+    page.waitForNavigation(),
+    page.locator('button[type=submit]').click()
+  ]);
+  assert.equal(response.status(), 200, await page.locator('body').innerText());
+  assert.equal(new URL(page.url()).pathname, '/');
+}
+
 async function emulateSafariRemoteAudioStats(page) {
   await page.addInitScript(() => {
     const originalGetStats = RTCPeerConnection.prototype.getStats;
@@ -293,7 +305,7 @@ try {
     '-t', '30', '-c:v', 'libx264', '-preset', 'ultrafast', '-pix_fmt', 'yuv420p',
     '-c:a', 'aac', '-movflags', '+faststart', join(directory, 'test.mp4')]);
   await copyFile(join(directory, 'test.mp4'), join(directory, 'alternate.mp4'));
-  app = await buildServer({ mediaDirectory: directory });
+  app = await buildServer({ mediaDirectory: directory, accessPassword: 'browser screening password' });
   const address = await app.listen({ host: '127.0.0.1', port: 0 });
   const launchOptions = {
     headless: true,
@@ -314,6 +326,7 @@ try {
   const a = await context.newPage();
   const b = await context.newPage();
   await emulateSafariRemoteAudioStats(a);
+  await enterPrivateScreening(a, address);
   for (const page of [a, b]) {
     page.on('pageerror', (error) => errors.push(error.message));
     page.on('console', message => {
@@ -327,6 +340,7 @@ try {
     await page.goto(new URL(process.env.FRONTEND_PATH ?? '/', address).href);
     await until(page, () => !document.querySelector('#movies').disabled);
   }
+  console.log('PASS shared-password login gates the compiled browser application');
   await runChecks(a, b);
   await checkReflexEdges(a);
   assert.deepEqual(errors, []);

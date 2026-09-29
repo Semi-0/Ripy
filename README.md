@@ -60,9 +60,14 @@ Use **[ fullscreen ]** or double-click the video to expand the player and shared
 controls. Use **[ exit fullscreen ]** or Escape to leave fullscreen. This is
 local to your browser. The page uses a monochrome, monospace interface.
 
-Configuration is intentionally small:
+Configuration is intentionally small. Set `ROOM_PASSWORD` to require a shared
+password before any viewer can load the application, catalog, movie bytes, ICE
+configuration, or movie/voice WebSocket. Passwords must contain at least eight
+characters; use a long unique phrase. Sessions live only in server memory,
+expire after 12 hours, and are invalidated whenever the server restarts.
 
 ```sh
+ROOM_PASSWORD='a long unique screening phrase' \
 PORT=3001 MEDIA_DIRECTORY=/absolute/path/to/movies npm start
 ```
 
@@ -70,8 +75,8 @@ The server defaults to `127.0.0.1`. To watch from devices on the same local
 network, stop the existing server and run `npm run start:lan`. Open
 `http://YOUR_MAC_LAN_IP:3000` on each device. Keep this Mac awake while watching.
 `HOST` can also select a specific network interface address. LAN mode listens
-on all IPv4 interfaces; anyone who can reach port 3000 can join the room and
-access the movies.
+on all IPv4 interfaces. Configure `ROOM_PASSWORD` so only viewers with the
+shared password can join the room and access the movies.
 
 Movie playback works over LAN HTTP, but browsers expose the microphone only in
 a secure context. `http://localhost` is a special exception; a second device
@@ -81,6 +86,7 @@ TLS directly when both certificate paths are configured:
 ```sh
 HTTPS_KEY_PATH=.certs/lan-key.pem \
 HTTPS_CERT_PATH=.certs/lan-cert.pem \
+ROOM_PASSWORD='a long unique screening phrase' \
 npm run start:lan
 ```
 
@@ -105,8 +111,8 @@ share `lan-key.pem`. If installing a private CA on the other device is
 undesirable, use a real domain with Caddy/nginx and a publicly trusted
 certificate, or use a private-network service that provides trusted HTTPS.
 
-There is no login system, upload endpoint,
-database, Lain integration, transcoding, or public deployment in this example.
+The shared-password gate has no accounts or database. There is no upload
+endpoint, Lain integration, transcoding, or public deployment in this example.
 
 ## How it works
 
@@ -300,11 +306,11 @@ on one machine do not measure the Netherlands–Taiwan connection.
 ## Later: Vultr deployment
 
 Keep the application bound to localhost and put an HTTPS reverse proxy in
-front of it. Configure WebSocket upgrades and HTTP range forwarding. Add access
-protection to **both video URLs and room connections**, such as a shared login
-implemented by your proxy or a private VPN. Protect the catalog and webpage as
-well. Configure trusted proxy/origin handling for the chosen HTTPS deployment;
-the current origin check assumes direct localhost HTTP access.
+front of it. Configure WebSocket upgrades and HTTP range forwarding. The
+`ROOM_PASSWORD` gate protects the page, catalog, video URLs, ICE configuration,
+and both WebSockets. A private VPN or proxy-managed identity remains appropriate
+for a public deployment. Configure trusted proxy/origin handling for the chosen
+HTTPS deployment; the current origin check assumes direct HTTPS termination.
 
 Voice also requires HTTPS/WSS and a TURN server for reliable Netherlands–Taiwan
 connectivity. Ripy is ready for a coturn-style shared secret:
