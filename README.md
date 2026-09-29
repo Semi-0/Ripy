@@ -60,16 +60,53 @@ Use **[ fullscreen ]** or double-click the video to expand the player and shared
 controls. Use **[ exit fullscreen ]** or Escape to leave fullscreen. This is
 local to your browser. The page uses a monochrome, monospace interface.
 
-Configuration is intentionally small. Set `ROOM_PASSWORD` to require a shared
-password before any viewer can load the application, catalog, movie bytes, ICE
-configuration, or movie/voice WebSocket. Passwords must contain at least eight
-characters; use a long unique phrase. Sessions live only in server memory,
-expire after 12 hours, and are invalidated whenever the server restarts.
+## Require a room password
+
+Set `ROOM_PASSWORD` before starting Ripy to require a shared password before a
+viewer can load the application, catalog, movie bytes, ICE configuration, or
+movie/voice WebSocket. Passwords must contain between 8 and 1024 characters;
+use a long, unique phrase.
+
+On macOS with the default zsh shell, read the password without displaying it or
+writing it into shell history, export it to the server process, and start Ripy:
 
 ```sh
-ROOM_PASSWORD='a long unique screening phrase' \
-PORT=3001 MEDIA_DIRECTORY=/absolute/path/to/movies npm start
+read -s 'ROOM_PASSWORD?Room password: '
+echo
+export ROOM_PASSWORD
+npm start
 ```
+
+Add other configuration before `npm start` when needed:
+
+```sh
+export PORT=3001
+export MEDIA_DIRECTORY=/absolute/path/to/movies
+npm start
+```
+
+For LAN access with HTTPS and microphone support:
+
+```sh
+read -s 'ROOM_PASSWORD?Room password: '
+echo
+export ROOM_PASSWORD
+export HTTPS_KEY_PATH=.certs/lan-key.pem
+export HTTPS_CERT_PATH=.certs/lan-cert.pem
+npm run start:lan
+```
+
+Open the site in a private browser window to verify that `/` redirects to the
+password page. After login, the browser receives an `HttpOnly` session cookie.
+Sessions are held only in server memory, expire after 12 hours, and disappear
+whenever the server restarts.
+
+To change the password, stop the server, set a new `ROOM_PASSWORD`, and start it
+again. Restarting also signs out every existing viewer. To disable the password
+gate for localhost development, stop the server, run `unset ROOM_PASSWORD`, and
+start it again. Do not put a real password in the repository, README, command
+line, or a committed configuration file. For a managed deployment, provide
+`ROOM_PASSWORD` through the host's secret or environment-variable manager.
 
 The server defaults to `127.0.0.1`. To watch from devices on the same local
 network, stop the existing server and run `npm run start:lan`. Open
@@ -86,7 +123,6 @@ TLS directly when both certificate paths are configured:
 ```sh
 HTTPS_KEY_PATH=.certs/lan-key.pem \
 HTTPS_CERT_PATH=.certs/lan-cert.pem \
-ROOM_PASSWORD='a long unique screening phrase' \
 npm run start:lan
 ```
 
