@@ -23,7 +23,7 @@ data VoicePhase
   = VoiceIdle
   | VoiceRequestingMicrophone
   | VoiceConnecting
-  | VoiceWaiting
+  | VoiceWaitingForPeer
   | VoiceConnected
   | VoiceReconnecting
   | VoiceFailed Text
@@ -160,7 +160,7 @@ receiveVoice runtime emit version bytes =
 handleVoiceMessage
   :: IORef VoiceRuntime -> (VoiceEvent -> IO ()) -> Int -> VoiceServerMessage -> IO ()
 handleVoiceMessage runtime emit version message = case message of
-  VoiceWaiting -> emit $ SetVoicePhase VoiceWaiting
+  VoiceProtocol.VoiceWaiting -> emit $ SetVoicePhase VoiceWaitingForPeer
   VoicePeerReady role -> startPeer runtime emit version role
   VoiceOfferReceived sdp -> withPeer runtime emit $ \peer ->
     answerVoiceOffer peer sdp $ alive runtime version . either
@@ -286,7 +286,7 @@ peerLeft runtime emit = do
     , runtimeRemoteReady = False
     , runtimePendingIce = []
     }
-  emit $ SetVoicePhase VoiceWaiting
+  emit $ SetVoicePhase VoiceWaitingForPeer
   emit $ SetNeedsEnable False
   emit $ SetVoiceError ""
 

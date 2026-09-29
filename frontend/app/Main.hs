@@ -99,7 +99,7 @@ canJoin phase = case phase of
   VoiceFailed _ -> True
   VoiceRequestingMicrophone -> False
   VoiceConnecting -> False
-  VoiceWaiting -> False
+  VoiceWaitingForPeer -> False
   VoiceConnected -> False
   VoiceReconnecting -> False
 
@@ -109,7 +109,7 @@ isActive phase = case phase of
   VoiceFailed _ -> False
   VoiceRequestingMicrophone -> True
   VoiceConnecting -> True
-  VoiceWaiting -> True
+  VoiceWaitingForPeer -> True
   VoiceConnected -> True
   VoiceReconnecting -> True
 
@@ -118,7 +118,7 @@ voicePhaseLabel phase = case phase of
   VoiceIdle -> "OFFLINE"
   VoiceRequestingMicrophone -> "REQUESTING MICROPHONE"
   VoiceConnecting -> "CONNECTING"
-  VoiceWaiting -> "WAITING FOR FRIEND"
+  VoiceWaitingForPeer -> "WAITING FOR FRIEND"
   VoiceConnected -> "CONNECTED"
   VoiceReconnecting -> "RECONNECTING"
   VoiceFailed _ -> "FAILED"
