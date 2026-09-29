@@ -41,6 +41,12 @@ main = do
     displayedSelection staleAlternate == "test.mp4" && pendingSelection staleAlternate == Just "test.mp4"
   check "matching acknowledgement clears pending selection" $
     confirmedTest == SelectionControl "test.mp4" "test.mp4" Nothing
+  check "local selection needs no redundant DOM write" $
+    selectionWriteAfter confirmedMovie (RequestedSelection "alternate.mp4") == Nothing
+  check "placeholder restores current display" $
+    selectionWriteAfter confirmedMovie (RequestedSelection "") == Just "test.mp4"
+  check "stale acknowledgement writes latest pending display" $
+    selectionWriteAfter pendingTest (ConfirmedSelection "alternate.mp4") == Just "test.mp4"
   forM_ [(Play,"{\"type\":\"play\"}"),(Pause UserPause,"{\"type\":\"pause\",\"reason\":\"user\"}"),
          (Pause Buffering,"{\"type\":\"pause\",\"reason\":\"buffering\"}"),(Pause Ended,"{\"type\":\"pause\",\"reason\":\"ended\"}"),
          (Seek 12,"{\"type\":\"seek\",\"positionSeconds\":12}"),(Ping 1000,"{\"type\":\"ping\",\"clientSentAtMs\":1000}"),

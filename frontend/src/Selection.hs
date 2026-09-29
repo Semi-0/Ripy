@@ -26,3 +26,10 @@ selectionAfter update state = case update of
     Just pending -> case pending == confirmed of
       True -> SelectionControl confirmed confirmed Nothing
       False -> state { confirmedSelection = confirmed }
+
+selectionWriteAfter :: SelectionControl -> SelectionUpdate -> Maybe Text
+selectionWriteAfter state update = case update of
+  RequestedSelection requested -> case T.null requested of
+    True -> Just $ displayedSelection state
+    False -> Nothing
+  ConfirmedSelection _ -> Just $ displayedSelection $ selectionAfter update state

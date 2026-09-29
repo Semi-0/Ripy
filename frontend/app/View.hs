@@ -35,15 +35,17 @@ movieView ui = elAttr "main" ("data-reflex-ready" =: "true") $ do
     elAttr "label" ("for" =: "movies") $ text "movie /"
     options <- holdUniqDyn $ (\u -> Map.fromList $ ("", "Choose a movie…") : map (\m -> (movieId m, movieTitle m)) (catalog u)) <$> ui
     authoritative <- holdUniqDyn $ selected <$> ui
-    rec control <- foldDyn selectionAfter emptySelection $ leftmost
-          [ConfirmedSelection <$> updated authoritative, RequestedSelection <$> requested]
+    rec let selectionUpdates = leftmost
+              [ConfirmedSelection <$> updated authoritative, RequestedSelection <$> requested]
+            selectionWrites = attachPromptlyDynWithMaybe selectionWriteAfter control selectionUpdates
+        control <- foldDyn selectionAfter emptySelection selectionUpdates
         let disabled u
               | not (ready u) || null (catalog u) = Just ""
               | otherwise = Nothing
             config = def
               & initialAttributes .~ (("id" =: "movies") <> ("disabled" =: ""))
               & modifyAttributes .~ ((\u -> "disabled" =: disabled u) <$> updated ui)
-              & selectElementConfig_setValue .~ (displayedSelection <$> updated control)
+              & selectElementConfig_setValue .~ selectionWrites
         (selector, _) <- selectElement config $ dyn_ $ ffor options $ \entries ->
           mapM_ (\(ident, title) -> elAttr "option" ("value" =: ident) $ text title) (Map.toList entries)
         let requested = _selectElement_change selector
