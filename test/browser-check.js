@@ -75,10 +75,10 @@ async function runChecks(a, b) {
   await a.selectOption('#movies', 'test.mp4');
   await until(a, () => !document.querySelector('#play').disabled);
   await until(b, () => !document.querySelector('#play').disabled);
-  const selectedRevision = await a.evaluate(() => window.observedSockets.at(-1).snapshot.revision);
+  const selectedRevision = await a.evaluate(() => window.roomSockets().at(-1).snapshot.revision);
   await a.selectOption('#movies', '');
   await until(a, () => document.querySelector('#movies').value === 'test.mp4');
-  assert.equal(await a.evaluate(() => window.observedSockets.at(-1).snapshot.revision), selectedRevision);
+  assert.equal(await a.evaluate(() => window.roomSockets().at(-1).snapshot.revision), selectedRevision);
   await a.click('#play');
   await until(b, () => document.querySelector('video').currentTime > 1);
   await checkTogether(a, b, false);
@@ -181,11 +181,11 @@ async function runChecks(a, b) {
   // Rapid selection changes exercise cancellation of stale metadata/play effects.
   const replacements = Number(process.env.RAPID_REPEATS ?? 1);
   for (let attempt = 0; attempt < replacements; attempt += 1) {
-    const expectedRevision = await a.evaluate(() => window.observedSockets.at(-1).snapshot.revision + 2);
+    const expectedRevision = await a.evaluate(() => window.roomSockets().at(-1).snapshot.revision + 2);
     await a.selectOption('#movies', 'alternate.mp4');
     await a.selectOption('#movies', 'test.mp4');
     for (const page of [a, b]) {
-      await page.waitForFunction(revision => window.observedSockets.at(-1).snapshot.revision >= revision,
+      await page.waitForFunction(revision => window.roomSockets().at(-1).snapshot.revision >= revision,
         expectedRevision, { timeout: 12000 });
       await until(page, () => {
         const video = document.querySelector('video');
@@ -279,7 +279,7 @@ try {
             voiceStatus: document.querySelector('#voice-status')?.textContent,
             voiceError: document.querySelector('#voice-error')?.textContent,
             source: video?.currentSrc, position: video?.currentTime, readyState: video?.readyState, paused: video?.paused,
-            snapshot: window.observedSockets?.at(-1)?.snapshot };
+            snapshot: window.roomSockets?.().at(-1)?.snapshot };
         }));
       }
     }

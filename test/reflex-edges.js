@@ -5,6 +5,7 @@ export async function observeSockets(context) {
   await context.addInitScript(() => {
     const NativeSocket = window.WebSocket;
     window.observedSockets = [];
+    window.roomSockets = () => window.observedSockets.filter(socket => new URL(socket.url).pathname === '/room');
     window.WebSocket = class extends NativeSocket {
       constructor(...args) {
         super(...args);
@@ -37,21 +38,21 @@ export async function observeSockets(context) {
 export async function checkReflexEdges(page) {
   const initial = await page.locator('video').evaluate(video => video.currentTime);
   await page.evaluate(() => {
-    const socket = window.observedSockets.at(-1);
+    const socket = window.roomSockets().at(-1);
     socket.onmessage({ data: '{' });
   });
   await page.waitForFunction(() => document.querySelector('#error').textContent.includes('Invalid server message'));
   assert.equal(await page.locator('video').evaluate(video => video.paused), true);
   assert.ok(Math.abs(await page.locator('video').evaluate(video => video.currentTime) - initial) < 0.2);
   await page.evaluate(() => {
-    const socket = window.observedSockets.at(-1);
+    const socket = window.roomSockets().at(-1);
     socket.onmessage({ data: JSON.stringify({ ...socket.snapshot, revision: socket.snapshot.revision - 1, positionSeconds: 20, mode: 'playing' }) });
   });
   await page.waitForTimeout(300);
   assert.equal(await page.locator('video').evaluate(video => video.paused), true);
   assert.ok(Math.abs(await page.locator('video').evaluate(video => video.currentTime) - initial) < 0.2);
   await page.evaluate(() => {
-    const socket = window.observedSockets.at(-1);
+    const socket = window.roomSockets().at(-1);
     socket.onmessage({ data: JSON.stringify({ type: 'state', epoch: 'test-new-server-epoch', revision: 0,
       mediaId: null, mode: 'empty', positionSeconds: 0, anchorServerTimeMs: Date.now(), pauseReason: null }) });
   });
@@ -60,15 +61,15 @@ export async function checkReflexEdges(page) {
   await page.reload();
   await page.waitForFunction(() => !document.querySelector('#play').disabled);
 
-  await page.evaluate(() => window.observedSockets.at(-1).close());
-  await page.waitForFunction(() => window.observedSockets.length === 2 && !document.querySelector('#play').disabled);
+  await page.evaluate(() => window.roomSockets().at(-1).close());
+  await page.waitForFunction(() => window.roomSockets().length === 2 && !document.querySelector('#play').disabled);
   await page.evaluate(() => {
-    const old = window.observedSockets[0];
+    const old = window.roomSockets()[0];
     old.dispatchEvent(new MessageEvent('message', { data: JSON.stringify({ ...old.snapshot, epoch: 'obsolete', mode: 'empty', mediaId: null }) }));
     old.dispatchEvent(new CloseEvent('close'));
   });
   await page.waitForTimeout(2200);
-  assert.equal(await page.evaluate(() => window.observedSockets.length), 2);
+  assert.equal(await page.evaluate(() => window.roomSockets().length), 2);
   assert.equal(await page.locator('#play').isEnabled(), true);
   console.log('PASS obsolete connection events cannot reset playback or start another reconnect');
 
@@ -90,23 +91,23 @@ export async function checkReflexEdges(page) {
   assert.equal(await page.locator('video').evaluate(video => video.currentSrc.endsWith('/test.mp4')), true);
   assert.equal(await page.locator('video').evaluate(video => video.paused), true);
   console.log('PASS delayed obsolete metadata load cannot replace the latest movie');
-  await page.waitForFunction(() => window.observedSockets.at(-1).sent.filter(x => x.type === 'ping').length >= 10,
+  await page.waitForFunction(() => window.roomSockets().at(-1).sent.filter(x => x.type === 'ping').length >= 10,
     undefined, { timeout: 35000 });
-  const pings = await page.evaluate(() => window.observedSockets.at(-1).sent.filter(x => x.type === 'ping'));
+  const pings = await page.evaluate(() => window.roomSockets().at(-1).sent.filter(x => x.type === 'ping'));
   assert.equal(pings.length, 10);
-  const firstPing = await page.evaluate(() => window.observedSockets[0].sent.find(x => x.type === 'ping').clientSentAtMs);
+  const firstPing = await page.evaluate(() => window.roomSockets()[0].sent.find(x => x.type === 'ping').clientSentAtMs);
   assert.ok(pings[5].clientSentAtMs - firstPing >= 29000);
   console.log('PASS five initial clock samples and five-sample refresh after 30 seconds');
 
   const count = await page.evaluate(() => {
     window.blockPongs = true;
-    window.observedSockets.at(-1).close();
-    return window.observedSockets.length;
+    window.roomSockets().at(-1).close();
+    return window.roomSockets().length;
   });
-  await page.waitForFunction(previousCount => window.observedSockets.length > previousCount &&
-    window.observedSockets.at(-1).readyState === WebSocket.CLOSED, count, { timeout: 12000 });
+  await page.waitForFunction(previousCount => window.roomSockets().length > previousCount &&
+    window.roomSockets().at(-1).readyState === WebSocket.CLOSED, count, { timeout: 12000 });
   const lifetime = await page.evaluate(() => {
-    const socket = window.observedSockets.at(-1);
+    const socket = window.roomSockets().at(-1);
     window.blockPongs = false;
     return socket.closedAt - socket.openedAt;
   });
