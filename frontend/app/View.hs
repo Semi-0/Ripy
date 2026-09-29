@@ -12,7 +12,7 @@ import Data.Text (Text)
 import Reflex.Dom
 
 data ButtonView = ButtonView
-  { buttonAttributes :: Map AttributeName Text
+  { buttonAttributes :: Map Text Text
   , buttonLabel :: Text
   , buttonEnabled :: Bool
   } deriving (Eq, Show)
@@ -26,12 +26,12 @@ data RangeView = RangeView
   { rangeEnabled :: Bool
   } deriving (Eq, Show)
 
-conditional :: Bool -> Map AttributeName Text -> Map AttributeName Text
+conditional :: Bool -> Map Text Text -> Map Text Text
 conditional condition attributes = case condition of
   True -> attributes
   False -> Map.empty
 
-visibleAttributes :: Map AttributeName Text -> Bool -> Map AttributeName Text
+visibleAttributes :: Map Text Text -> Bool -> Map Text Text
 visibleAttributes attributes visible =
   attributes <> conditional (not visible) ("hidden" =: "")
 
@@ -79,13 +79,13 @@ rangeView initial initialValue model = do
   pure $ _inputElement_input input
 
 dynamicTextView :: MonadWidget t m
-  => Text -> Map AttributeName Text -> Dynamic t Text -> m ()
+  => Text -> Map Text Text -> Dynamic t Text -> m ()
 dynamicTextView element attributes value = do
   stable <- holdUniqDyn value
   elAttr element attributes $ dynText stable
 
 emptyElementView :: MonadWidget t m
-  => Text -> Map AttributeName Text -> m ()
+  => Text -> Map Text Text -> m ()
 emptyElementView element attributes = elAttr element attributes blank
 
 disabledChange :: Bool -> Map AttributeName (Maybe Text)

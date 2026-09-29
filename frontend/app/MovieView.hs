@@ -162,11 +162,11 @@ enableButton model = ButtonView
   , buttonEnabled = True
   }
 
-emptyAttributes :: MovieViewModel -> Map AttributeName Text
+emptyAttributes :: MovieViewModel -> Map Text Text
 emptyAttributes model =
   visibleAttributes ("id" =: "empty") (null $ movieOptions model)
 
-errorAttributes :: MovieViewModel -> Map AttributeName Text
+errorAttributes :: MovieViewModel -> Map Text Text
 errorAttributes model = visibleAttributes
   (Map.fromList [("id", "error"), ("role", "alert")])
   (errorText model /= "")
