@@ -1,4 +1,4 @@
-{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE FlexibleContexts, OverloadedStrings #-}
 module Voice
   ( VoicePhase(..), VoiceState(..), VoiceInputs(..), VoiceNetwork(..)
   , voiceController
