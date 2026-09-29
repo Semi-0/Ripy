@@ -51,16 +51,18 @@ choiceView :: MonadWidget t m
   -> Event t Text
   -> m (Event t Text)
 choiceView initial model writes = do
+  -- A server acknowledgement may arrive in the same browser turn as a newer
+  -- user choice. Defer programmatic restoration so the user event is observed.
+  deferredWrites <- delay 0.02 writes
   options <- holdUniqDyn $ choiceOptions <$> model
   enabled <- holdUniqDyn $ choiceEnabled <$> model
   let config = def
         & initialAttributes .~ initial
         & modifyAttributes .~ (disabledChange <$> updated enabled)
-        & selectElementConfig_setValue .~ writes
+        & selectElementConfig_setValue .~ deferredWrites
   (selector, _) <- selectElement config $ dyn_ $ ffor options $
     mapM_ choiceOption
-  pure $ tagPromptlyDyn (_selectElement_value selector) $
-    domEvent Input $ _selectElement_element selector
+  pure $ _selectElement_change selector
   where
     choiceOption (ident, label) =
       elAttr "option" ("value" =: ident) $ text label
