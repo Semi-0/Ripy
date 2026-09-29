@@ -76,13 +76,13 @@ movieChooser :: MonadWidget t m
 movieChooser model = elClass "section" "toolbar" $ do
   elAttr "label" ("for" =: "movies") $ text "movie /"
   authoritative <- holdUniqDyn $ selectedMovieId <$> model
-  rec let selectionUpdates = leftmost
-            [ ConfirmedSelection <$> updated authoritative
-            , RequestedSelection <$> requested
+  rec let selectionUpdates = mergeWith (++)
+            [ pure . ConfirmedSelection <$> updated authoritative
+            , pure . RequestedSelection <$> requested
             ]
           selectionWrites =
-            attachPromptlyDynWithMaybe selectionWriteAfter control selectionUpdates
-      control <- foldDyn selectionAfter emptySelection selectionUpdates
+            attachPromptlyDynWithMaybe selectionWriteAfterMany control selectionUpdates
+      control <- foldDyn selectionAfterMany emptySelection selectionUpdates
       requested <- choiceView
         (("id" =: "movies") <> ("disabled" =: ""))
         (choiceModel <$> model)

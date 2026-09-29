@@ -36,10 +36,16 @@ main = do
       pendingTest = selectionAfter (RequestedSelection "test.mp4") pendingAlternate
       staleAlternate = selectionAfter (ConfirmedSelection "alternate.mp4") pendingTest
       confirmedTest = selectionAfter (ConfirmedSelection "test.mp4") staleAlternate
+      simultaneous = [ConfirmedSelection "alternate.mp4", RequestedSelection "test.mp4"]
   check "empty selection restores displayed value" $
     selectionAfter (RequestedSelection "") confirmedMovie == confirmedMovie
   check "stale acknowledgement preserves latest selection" $
     displayedSelection staleAlternate == "test.mp4" && pendingSelection staleAlternate == Just "test.mp4"
+  check "simultaneous acknowledgement retains latest request" $
+    selectionAfterMany simultaneous pendingAlternate ==
+      SelectionControl "alternate.mp4" "test.mp4" (Just "test.mp4")
+  check "simultaneous acknowledgement writes latest display" $
+    selectionWriteAfterMany pendingAlternate simultaneous == Just "test.mp4"
   check "matching acknowledgement clears pending selection" $
     confirmedTest == SelectionControl "test.mp4" "test.mp4" Nothing
   check "local selection needs no redundant DOM write" $
