@@ -5,6 +5,7 @@ import Data.Aeson (eitherDecode, decode, Value)
 import qualified Data.ByteString.Lazy.Char8 as BL
 import Protocol
 import Model
+import Selection
 
 check :: String -> Bool -> IO ()
 check label result = unless result $ fail label
@@ -29,6 +30,17 @@ main = do
   check "five samples choose lowest RTT" $ bestClockSample samples == Just (ClockSample 10 100)
   check "midpoint offset" $ clockSample 1000 1100 2050 == Just (ClockSample 100 1000)
   check "invalid samples" $ clockSample 1000 900 2050 == Nothing && bestClockSample [] == Nothing
+  let confirmedMovie = selectionAfter (ConfirmedSelection "test.mp4") emptySelection
+      pendingAlternate = selectionAfter (RequestedSelection "alternate.mp4") confirmedMovie
+      pendingTest = selectionAfter (RequestedSelection "test.mp4") pendingAlternate
+      staleAlternate = selectionAfter (ConfirmedSelection "alternate.mp4") pendingTest
+      confirmedTest = selectionAfter (ConfirmedSelection "test.mp4") staleAlternate
+  check "empty selection restores displayed value" $
+    selectionAfter (RequestedSelection "") confirmedMovie == confirmedMovie
+  check "stale acknowledgement preserves latest selection" $
+    displayedSelection staleAlternate == "test.mp4" && pendingSelection staleAlternate == Just "test.mp4"
+  check "matching acknowledgement clears pending selection" $
+    confirmedTest == SelectionControl "test.mp4" "test.mp4" Nothing
   forM_ [(Play,"{\"type\":\"play\"}"),(Pause UserPause,"{\"type\":\"pause\",\"reason\":\"user\"}"),
          (Pause Buffering,"{\"type\":\"pause\",\"reason\":\"buffering\"}"),(Pause Ended,"{\"type\":\"pause\",\"reason\":\"ended\"}"),
          (Seek 12,"{\"type\":\"seek\",\"positionSeconds\":12}"),(Ping 1000,"{\"type\":\"ping\",\"clientSentAtMs\":1000}"),
@@ -44,4 +56,4 @@ main = do
       case eitherDecode bytes :: Either String ServerMessage of
         Left _ -> pure ()
         Right _ -> fail "invalid server message accepted"
-  putStrLn "PASS Haskell JSON, timeline, clocks, epochs, stale snapshots and bounds"
+  putStrLn "PASS Haskell JSON, timeline, clocks, epochs, stale snapshots, selection control and bounds"

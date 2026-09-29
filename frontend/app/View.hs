@@ -1,15 +1,14 @@
-{-# LANGUAGE OverloadedStrings, FlexibleContexts #-}
+{-# LANGUAGE OverloadedStrings, FlexibleContexts, RecursiveDo #-}
 module View where
 
-import Control.Monad.IO.Class (liftIO)
 import Data.Map (Map)
 import qualified Data.Map as Map
 import Data.Text (Text)
 import Reflex.Dom
-import qualified Bindings as B
 import Protocol (Movie(..))
+import Selection
 
-data Intent = SelectMovie Text Text | Start | Stop | SeekTo Text | SetLocalVolume Text | Enable | Fullscreen
+data Intent = SelectMovie Text | Start | Stop | SeekTo Text | SetLocalVolume Text | Enable | Fullscreen
   deriving (Eq, Show)
 data Ui = Ui
   { catalog :: [Movie], selected :: Text, connectionLabel :: Text, ready :: Bool
@@ -35,18 +34,21 @@ movieView ui = elAttr "main" ("data-reflex-ready" =: "true") $ do
   chosen <- elClass "section" "toolbar" $ do
     elAttr "label" ("for" =: "movies") $ text "movie /"
     options <- holdUniqDyn $ (\u -> Map.fromList $ ("", "Choose a movie…") : map (\m -> (movieId m, movieTitle m)) (catalog u)) <$> ui
-    selection <- holdUniqDyn $ selected <$> ui
-    let disabled u
-          | not (ready u) || null (catalog u) = Just ""
-          | otherwise = Nothing
-        config = def
-          & initialAttributes .~ (("id" =: "movies") <> ("disabled" =: ""))
-          & modifyAttributes .~ ((\u -> "disabled" =: disabled u) <$> updated ui)
-          & selectElementConfig_setValue .~ updated selection
-    (selector, _) <- selectElement config $ dyn_ $ ffor options $ \entries ->
-      mapM_ (\(ident, title) -> elAttr "option" ("value" =: ident) $ text title) (Map.toList entries)
+    authoritative <- holdUniqDyn $ selected <$> ui
+    rec control <- foldDyn selectionAfter emptySelection $ leftmost
+          [ConfirmedSelection <$> updated authoritative, RequestedSelection <$> requested]
+        let disabled u
+              | not (ready u) || null (catalog u) = Just ""
+              | otherwise = Nothing
+            config = def
+              & initialAttributes .~ (("id" =: "movies") <> ("disabled" =: ""))
+              & modifyAttributes .~ ((\u -> "disabled" =: disabled u) <$> updated ui)
+              & selectElementConfig_setValue .~ (displayedSelection <$> updated control)
+        (selector, _) <- selectElement config $ dyn_ $ ffor options $ \entries ->
+          mapM_ (\(ident, title) -> elAttr "option" ("value" =: ident) $ text title) (Map.toList entries)
+        let requested = _selectElement_change selector
     elAttr "p" (("id" =: "connection") <> ("role" =: "status")) $ dynText $ connectionLabel <$> ui
-    pure $ attachPromptlyDynWith (\previous requested -> [SelectMovie previous requested]) selection $ _selectElement_change selector
+    pure $ fmapMaybe (fmap (pure . SelectMovie) . nonempty) requested
   elDynAttr "p" ((\u -> ("id" =: "empty") <> conditional (not $ null $ catalog u) ("hidden" =: "")) <$> ui) $
     text "No movies yet. Add an MP4 to media/, restart the server, and refresh."
   actions <- elAttr "section" (("id" =: "player") <> ("aria-label" =: "Movie player and controls")) $ do
@@ -92,5 +94,8 @@ controls ui = elClass "section" "controls" $ do
   pure $ mergeWith (++) [[Start] <$ domEvent Click play, [Stop] <$ domEvent Click pause,
     pure . SeekTo <$> _inputElement_input seek, pure . SetLocalVolume <$> _inputElement_input volume]
 
-restoreMovieSelection :: MonadWidget t m => Event t Text -> m ()
-restoreMovieSelection = performEvent_ . fmap (liftIO . B.setText "movies" "value" . B.toJS)
+
+nonempty :: Text -> Maybe Text
+nonempty value = case value == "" of
+  True -> Nothing
+  False -> Just value

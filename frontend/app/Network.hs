@@ -17,7 +17,6 @@ import Player (PlayerState(..))
 data Reaction
   = SendCommand ClientCommand
   | SetVolume Double
-  | RestoreMovieSelection Text
   | EnableVideo
   | ToggleFullscreen
   | RejectIntent Text
@@ -50,9 +49,7 @@ playbackStates phase room accepted = leftmost
 
 reactIntent :: Intent -> [Reaction]
 reactIntent intent = case intent of
-  SelectMovie previous requested -> case T.null requested of
-    True -> [RestoreMovieSelection previous]
-    False -> [SendCommand $ Protocol.SelectMovie requested]
+  SelectMovie requested -> [SendCommand $ Protocol.SelectMovie requested]
   Start -> [SendCommand Play]
   Stop -> [SendCommand $ Pause UserPause]
   SeekTo raw -> either (pure . RejectIntent) (pure . SendCommand . Seek . max 0) $ parseNumber "Invalid seek position." raw
