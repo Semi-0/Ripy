@@ -54,9 +54,11 @@ foreign import javascript unsafe
   closeVoicePeerJS :: JSVal -> IO ()
 foreign import javascript unsafe
   "(function(){var active=true,busy=false,lastEnergy=null,lastDuration=null;var timer=setInterval(function(){if(!active||busy){return;}busy=true;try{Promise.resolve($1.getStats()).then(function(stats){var level=0,found=false;stats.forEach(function(report){if(report.type==='inbound-rtp'&&(report.kind==='audio'||report.mediaType==='audio')&&!report.isRemote){found=true;if(Number.isFinite(report.audioLevel)&&report.audioLevel>=0){level=Math.max(level,report.audioLevel);}else if(Number.isFinite(report.totalAudioEnergy)&&Number.isFinite(report.totalSamplesDuration)){if(lastEnergy!==null&&lastDuration!==null){var energy=report.totalAudioEnergy-lastEnergy;var duration=report.totalSamplesDuration-lastDuration;if(energy>=0&&duration>0){level=Math.max(level,Math.sqrt(energy/duration));}}lastEnergy=report.totalAudioEnergy;lastDuration=report.totalSamplesDuration;}}});if(active){var sample=0;if(found&&Number.isFinite(level)&&level>=0){sample=level;}else{sample=0;}$2(sample);}},function(){if(active){$2(0);}}).then(function(){busy=false;},function(){busy=false;});}catch(e){busy=false;if(active){$2(0);}}},100);return {stop:function(){active=false;clearInterval(timer);}};})()"
-  startRemoteLevelMonitorJS :: JSVal -> Callback (Double -> IO ()) -> IO JSVal
+  startRemoteLevelMonitorJS :: JSVal -> Callback (JSVal -> IO ()) -> IO JSVal
 foreign import javascript unsafe "$1.stop()"
   stopRemoteLevelMonitorJS :: JSVal -> IO ()
+foreign import javascript unsafe "$1"
+  remoteLevelValue :: JSVal -> Double
 
 createVoicePeer
   :: Text -> JSVal -> (Text -> IO ()) -> (Either Text () -> IO ())
@@ -68,7 +70,7 @@ createVoicePeer configuration stream onIce onPlayback onLevel onState = mdo
   playbackCallback <- asyncCallback1 $ \value ->
     let message = fromJS $ stringValue value
     in if T.null message then onPlayback (Right ()) else onPlayback (Left message)
-  levelCallback <- asyncCallback1 onLevel
+  levelCallback <- asyncCallback1 $ onLevel . remoteLevelValue
   stateCallback <- asyncCallback1 $ onState . fromJS . stringValue
   addVoiceTracksJS peer stream
   watchVoicePeerJS peer iceCallback playbackCallback stateCallback
