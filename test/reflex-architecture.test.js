@@ -38,7 +38,20 @@ test('voice behavior is independent from the movie player and room', async () =>
     assert.doesNotMatch(voice, imports(moduleName));
   }
   assert.doesNotMatch(player, imports('Voice'));
+  assert.doesNotMatch(player, imports('Ducking'));
   assert.match(voice, /^voiceController ::/m);
+  assert.match(voice, /voiceRemoteSpeaking :: Dynamic t Bool/);
+});
+
+test('ducking policy is pure and composed only by Main', async () => {
+  const ducking = await source('frontend/src/Ducking.hs');
+  const main = await source('frontend/app/Main.hs');
+  assert.doesNotMatch(ducking, /^(?:foreign import|import Reflex|import Voice|import Player)/m);
+  assert.match(ducking, /^observeRemoteLevel\s*::/m);
+  assert.match(ducking, /^effectiveMovieVolume ::/m);
+  assert.match(main, /voiceRemoteSpeaking voice/);
+  assert.match(main, /effectiveMovieVolume defaultDuckingPolicy/);
+  assert.match(main, /videoVolumes = updated effectiveVolume/);
 });
 
 test('MovieView composes presentation without behavior dependencies', async () => {

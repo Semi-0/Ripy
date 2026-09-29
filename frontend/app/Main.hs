@@ -7,6 +7,7 @@ import Reflex.Dom hiding (Pause)
 import Text.Read (readMaybe)
 import Catalog
 import Connection
+import Ducking
 import MovieView
 import Network
 import Player
@@ -51,13 +52,18 @@ app = do
     pure (movieSignals, callSignals)
 
   let reactions = specializeMovieSignals signals
-      desiredPlayback = playbackStates (connectionPhase roomLink) room accepted
+  baseVolume <- holdDyn 1 $ reactionEvent volumeReaction reactions
+  effectiveVolume <- holdUniqDyn $ zipDynWith
+    (effectiveMovieVolume defaultDuckingPolicy)
+    baseVolume
+    (voiceRemoteSpeaking voice)
+  let desiredPlayback = playbackStates (connectionPhase roomLink) room accepted
       videoInputs = VideoInputs
         { videoStates = desiredPlayback
         , videoDisconnects = connectionDisconnected roomLink
         , videoEnableRequests = () <$ reactionEvent enableReaction reactions
         , videoFullscreenRequests = () <$ reactionEvent fullscreenReaction reactions
-        , videoVolumes = reactionEvent volumeReaction reactions
+        , videoVolumes = updated effectiveVolume
         , videoErrors = reactionEvent rejectedReaction reactions
         }
       outgoing = mergeWith (++) [commands reactions, playerMediaCommands player]

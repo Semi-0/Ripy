@@ -52,7 +52,9 @@ autoplay restrictions may require each viewer to click **Enable playback**.
 Voice is opt-in: each viewer clicks **Join voice** and grants microphone
 permission. **Leave voice** closes the peer connection and stops that browser's
 microphone tracks. Movie playback continues when voice joins, leaves, or
-reconnects.
+reconnects. While the other viewer is speaking, the browser temporarily lowers
+the movie to 25% of your chosen volume and restores your latest setting after
+the remote microphone becomes quiet.
 
 Use **[ fullscreen ]** or double-click the video to expand the player and shared
 controls. Use **[ exit fullscreen ]** or Escape to leave fullscreen. This is
@@ -101,6 +103,7 @@ Browser A ◀────── WebRTC audio, peer to peer ──────▶
 - `src/voice-ice.js`: STUN configuration and expiring TURN credentials.
 - `frontend/src/Protocol.hs`: explicit Aeson protocol encoders and decoders.
 - `frontend/src/Model.hs`: pure position, revision, epoch and clock calculations.
+- `frontend/src/Ducking.hs`: pure remote-activity smoothing and effective-volume policy.
 - `frontend/app/View.hs`: Reflex-DOM interface and user intentions.
 - `frontend/app/Connection.hs`: sockets, clock sampling, timeout and reconnection.
 - `frontend/app/Player.hs`: media effects, cancellation, drift and recovery.
@@ -254,8 +257,9 @@ shared playback/seek, late joins, reconnection, and the end of a movie. Bufferin
 and autoplay rejection are controlled simulations. It also checks drift correction,
 startup stalls, movie-selection reset, narrow layouts, fullscreen and local
 volume. It also uses fake microphone devices to verify two-person WebRTC audio,
-local mute, leave/rejoin, voice autoplay recovery, and signaling reconnection
-without changing movie state. Additional checks inject malformed/stale snapshots and new epochs,
+local mute, automatic local movie-volume ducking, leave/rejoin, voice autoplay
+recovery, and signaling reconnection without changing movie state. Additional
+checks inject malformed/stale snapshots and new epochs,
 delay an obsolete metadata request, dispatch events from a closed socket,
 observe the 30-second clock refresh and suppress pongs to trigger the five-second
 timeout. Screenshots are written to

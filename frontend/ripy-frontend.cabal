@@ -4,7 +4,7 @@ version: 0.1.0.0
 build-type: Simple
 
 library
-  exposed-modules: Protocol, Model, Selection, VoiceProtocol
+  exposed-modules: Ducking, Protocol, Model, Selection, VoiceProtocol
   hs-source-dirs: src
   build-depends: base >=4.12 && <5, aeson, bytestring, text
   default-language: Haskell2010

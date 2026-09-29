@@ -16,6 +16,7 @@ import qualified Data.Text.Encoding as TE
 import GHCJS.Types (JSVal)
 import Reflex.Dom
 import Bindings
+import Ducking
 import VoiceBindings
 import VoiceProtocol
 
@@ -45,6 +46,7 @@ data VoiceInputs t = VoiceInputs
 
 data VoiceNetwork t = VoiceNetwork
   { voiceState :: Dynamic t VoiceState
+  , voiceRemoteSpeaking :: Dynamic t Bool
   }
 
 data VoiceIntent = JoinVoice | LeaveVoice | SetVoiceMuted Bool | EnableVoiceAudio
@@ -53,6 +55,8 @@ data VoiceEvent
   | SetMuted Bool
   | SetNeedsEnable Bool
   | SetVoiceError Text
+  | ObserveRemoteLevel Double
+  | ResetRemoteActivity
 
 data VoiceRuntime = VoiceRuntime
   { runtimeGeneration :: Int
@@ -78,12 +82,35 @@ voiceStateAfter event previous = case event of
   SetMuted muted -> previous { voiceMuted = muted }
   SetNeedsEnable needed -> previous { voiceNeedsEnable = needed }
   SetVoiceError message -> previous { voiceErrorMessage = message }
+  ObserveRemoteLevel _ -> previous
+  ResetRemoteActivity -> previous
+
+voiceActivityAfter :: VoiceEvent -> VoiceActivity -> VoiceActivity
+voiceActivityAfter event previous = case event of
+  ObserveRemoteLevel level -> observeRemoteLevel defaultDuckingPolicy level previous
+  ResetRemoteActivity -> resetVoiceActivity
+  SetVoicePhase _ -> previous
+  SetMuted _ -> previous
+  SetNeedsEnable _ -> previous
+  SetVoiceError _ -> previous
+
+speakingWhenConnected :: VoiceState -> VoiceActivity -> Bool
+speakingWhenConnected state activity = case voicePhase state of
+  VoiceConnected -> activitySpeaking activity
+  VoiceIdle -> False
+  VoiceRequestingMicrophone -> False
+  VoiceConnecting -> False
+  VoiceWaitingForPeer -> False
+  VoiceReconnecting -> False
+  VoiceFailed _ -> False
 
 voiceController :: MonadWidget t m => m (VoiceNetwork t, VoiceInputs t -> m ())
 voiceController = do
   (events, emit) <- newTriggerEvent
   runtime <- liftIO $ newIORef initialRuntime
   state <- foldDyn voiceStateAfter initialVoiceState events
+  activity <- foldDyn voiceActivityAfter resetVoiceActivity events
+  let speaking = zipDynWith speakingWhenConnected state activity
   let control inputs = performEvent_ $ fmap (liftIO . applyIntent runtime emit) $
         mergeWith (++)
           [ [JoinVoice] <$ voiceJoinRequests inputs
@@ -91,7 +118,7 @@ voiceController = do
           , (: []) . SetVoiceMuted <$> voiceMuteRequests inputs
           , [EnableVoiceAudio] <$ voiceEnableRequests inputs
           ]
-  pure (VoiceNetwork state, control)
+  pure (VoiceNetwork state speaking, control)
 
 applyIntent :: IORef VoiceRuntime -> (VoiceEvent -> IO ()) -> [VoiceIntent] -> IO ()
 applyIntent runtime emit = mapM_ apply
@@ -116,6 +143,7 @@ joinVoice runtime emit = do
         , runtimeJoined = True
         , runtimeMuted = runtimeMuted previous
         }
+      emit ResetRemoteActivity
       emit $ SetVoicePhase VoiceRequestingMicrophone
       emit $ SetNeedsEnable False
       emit $ SetVoiceError ""
@@ -183,11 +211,13 @@ startPeer runtime emit version role = do
   case (runtimeConfiguration current, runtimeStream current) of
     (Just configuration, Just stream) -> do
       forM_ (runtimePeer current) closeVoicePeer
+      emit ResetRemoteActivity
       peer <- createVoicePeer configuration stream
         (sendCandidate runtime emit version)
         (alive runtime version . either
           (\message -> emit (SetVoiceError message) >> emit (SetNeedsEnable True))
           (const $ emit (SetVoiceError "") >> emit (SetNeedsEnable False)))
+        (\level -> alive runtime version $ emit $ ObserveRemoteLevel level)
         (alive runtime version . peerStateChanged runtime emit version)
       modifyIORef' runtime $ \value -> value
         { runtimePeer = Just peer
@@ -287,6 +317,7 @@ peerLeft runtime emit = do
     , runtimePendingIce = []
     }
   emit $ SetVoicePhase VoiceWaitingForPeer
+  emit ResetRemoteActivity
   emit $ SetNeedsEnable False
   emit $ SetVoiceError ""
 
@@ -310,6 +341,7 @@ reconnectVoice runtime emit version = do
       forM_ (runtimeStream current) $ \stream -> setVoiceMuted stream True
       clearVoiceAudio
       emit $ SetVoicePhase VoiceReconnecting
+      emit ResetRemoteActivity
       emit $ SetVoiceError ""
       void $ forkIO $ do
         threadDelay 2000000
@@ -327,6 +359,7 @@ muteVoice runtime emit muted = do
 leaveVoice :: IORef VoiceRuntime -> (VoiceEvent -> IO ()) -> IO ()
 leaveVoice runtime emit = terminateVoice runtime
   >> emit (SetVoicePhase VoiceIdle)
+  >> emit ResetRemoteActivity
   >> emit (SetMuted False)
   >> emit (SetNeedsEnable False)
   >> emit (SetVoiceError "")
@@ -334,6 +367,7 @@ leaveVoice runtime emit = terminateVoice runtime
 failVoice :: IORef VoiceRuntime -> (VoiceEvent -> IO ()) -> Text -> IO ()
 failVoice runtime emit message = terminateVoice runtime
   >> emit (SetVoicePhase $ VoiceFailed message)
+  >> emit ResetRemoteActivity
   >> emit (SetMuted False)
   >> emit (SetNeedsEnable False)
   >> emit (SetVoiceError message)

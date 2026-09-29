@@ -3,6 +3,7 @@ module Main where
 import Control.Monad (unless, forM_)
 import Data.Aeson (eitherDecode, decode, Value)
 import qualified Data.ByteString.Lazy.Char8 as BL
+import Ducking
 import Protocol
 import Model
 import Selection
@@ -54,6 +55,26 @@ main = do
     selectionWriteAfter confirmedMovie (RequestedSelection "") == Just "test.mp4"
   check "stale acknowledgement writes latest pending display" $
     selectionWriteAfter pendingTest (ConfirmedSelection "alternate.mp4") == Just "test.mp4"
+  let oneActive = observeRemoteLevel defaultDuckingPolicy 0.03 resetVoiceActivity
+      speaking = observeRemoteLevel defaultDuckingPolicy 0.03 oneActive
+      held = iterate (observeRemoteLevel defaultDuckingPolicy 0) speaking !! 7
+      released = observeRemoteLevel defaultDuckingPolicy 0 held
+      immediateRelease = defaultDuckingPolicy { releaseSamples = 1 }
+  check "voice activity requires two active samples" $
+    not (activitySpeaking oneActive) && activitySpeaking speaking
+  check "voice activity holds through seven quiet samples" $ activitySpeaking held
+  check "voice activity releases on eighth quiet sample" $ not $ activitySpeaking released
+  check "voice activity reset clears counters" $ resetVoiceActivity == VoiceActivity 0 0 False
+  forM_ [-1, 0/0, 1/0] $ \level ->
+    check "invalid voice levels count as silence" $
+      not $ activitySpeaking $ observeRemoteLevel immediateRelease level speaking
+  check "speaking ducks current base volume" $
+    effectiveMovieVolume defaultDuckingPolicy 0.8 True == 0.2 &&
+    effectiveMovieVolume defaultDuckingPolicy 0.4 True == 0.1
+  check "silence restores and bounds base volume" $
+    effectiveMovieVolume defaultDuckingPolicy 0.4 False == 0.4 &&
+    effectiveMovieVolume defaultDuckingPolicy 2 False == 1 &&
+    effectiveMovieVolume defaultDuckingPolicy (-1) False == 0
   forM_ [(Play,"{\"type\":\"play\"}"),(Pause UserPause,"{\"type\":\"pause\",\"reason\":\"user\"}"),
          (Pause Buffering,"{\"type\":\"pause\",\"reason\":\"buffering\"}"),(Pause Ended,"{\"type\":\"pause\",\"reason\":\"ended\"}"),
          (Seek 12,"{\"type\":\"seek\",\"positionSeconds\":12}"),(Ping 1000,"{\"type\":\"ping\",\"clientSentAtMs\":1000}"),

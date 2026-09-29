@@ -45,13 +45,24 @@ async function checkVoice(a, b) {
   await until(a, () => document.querySelector('#voice-mute').getAttribute('aria-pressed') === 'true');
   assert.equal(await a.locator('#voice-mute').getAttribute('aria-pressed'), 'true');
   assert.equal(await b.locator('#voice-mute').getAttribute('aria-pressed'), 'false');
-  await a.click('#voice-mute');
-  await until(a, () => document.querySelector('#voice-mute').getAttribute('aria-pressed') === 'false');
-  assert.equal(await a.locator('#voice-mute').getAttribute('aria-pressed'), 'false');
+  await until(b, () => Math.abs(document.querySelector('video').volume - 1) < 0.001);
+  const roomRevision = await a.evaluate(() => window.roomSockets().at(-1).snapshot.revision);
+  await a.locator('#volume').fill('0.8');
+  await until(a, () => Math.abs(document.querySelector('video').volume - 0.2) < 0.001);
+  await a.locator('#volume').fill('0.4');
+  await until(a, () => Math.abs(document.querySelector('video').volume - 0.1) < 0.001);
+  assert.equal(await a.locator('#volume').inputValue(), '0.4');
+  assert.equal(await b.locator('video').evaluate(video => video.volume), 1);
+  await b.click('#voice-mute');
+  await until(a, () => Math.abs(document.querySelector('video').volume - 0.4) < 0.001);
+  await b.click('#voice-mute');
+  await until(a, () => Math.abs(document.querySelector('video').volume - 0.1) < 0.001);
+  assert.equal(await a.evaluate(() => window.roomSockets().at(-1).snapshot.revision), roomRevision);
 
   await b.click('#voice-leave');
   await until(b, () => document.querySelector('#voice-status').textContent === 'OFFLINE');
   await until(a, () => document.querySelector('#voice-status').textContent === 'WAITING FOR FRIEND');
+  await until(a, () => Math.abs(document.querySelector('video').volume - 0.4) < 0.001);
   await b.evaluate(() => {
     const audio = document.querySelector('#voice-audio');
     const original = audio.play.bind(audio);
@@ -64,6 +75,7 @@ async function checkVoice(a, b) {
   for (const page of [a, b]) {
     await until(page, () => document.querySelector('#voice-status').textContent === 'CONNECTED');
   }
+  await until(a, () => Math.abs(document.querySelector('video').volume - 0.1) < 0.001);
   await b.locator('#voice-enable').waitFor({ state: 'visible' });
   await b.click('#voice-enable');
   await b.locator('#voice-enable').waitFor({ state: 'hidden' });
@@ -168,12 +180,14 @@ async function runChecks(a, b) {
     client.terminate();
   }
   await until(a, () => document.querySelector('#play').disabled && document.querySelector('video').paused);
+  await until(a, () => Math.abs(document.querySelector('video').volume - 0.4) < 0.001);
   await until(a, () => !document.querySelector('#play').disabled);
   await until(b, () => !document.querySelector('#play').disabled);
   await checkTogether(a, b, false);
   for (const page of [a, b]) {
     await until(page, () => document.querySelector('#voice-status').textContent === 'CONNECTED');
   }
+  await until(a, () => Math.abs(document.querySelector('video').volume - 0.1) < 0.001);
   console.log('PASS movie and voice transports reconnect independently');
 
   await a.click('#pause');
@@ -228,7 +242,8 @@ async function runChecks(a, b) {
   await until(a, () => !document.querySelector('#error').hidden);
   assert.equal(await a.evaluate(() => document.fullscreenElement), null);
   await a.locator('#volume').fill('0.25');
-  await until(a, () => document.querySelector('video').volume === 0.25);
+  await until(a, () => Math.abs(document.querySelector('video').volume - 0.0625) < 0.001);
+  assert.equal(await a.locator('#volume').inputValue(), '0.25');
   assert.equal(await b.locator('video').evaluate(video => video.volume), 1);
   console.log('PASS fullscreen error is visible and volume stays local');
 }
