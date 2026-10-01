@@ -77,3 +77,24 @@ test('Main is the movie and voice behavior specialization boundary', async () =>
   assert.match(main, /^voicePresentation ::/m);
   assert.match(main, /controlVoice VoiceInputs/);
 });
+
+
+test('media management keeps view, behavior and effects separated', async () => {
+  const model = await source('frontend/src/MediaManagement.hs');
+  const transfer = await source('frontend/app/MediaTransfer.hs');
+  const bindings = await source('frontend/app/MediaBindings.hs');
+  const view = await source('frontend/app/MediaManagementView.hs');
+  const player = await source('frontend/app/Player.hs');
+  const voice = await source('frontend/app/Voice.hs');
+  const main = await source('frontend/app/Main.hs');
+  assert.doesNotMatch(model, /^(?:foreign import|import Reflex)/m);
+  assert.doesNotMatch(view, /^(?:foreign import|import MediaTransfer|import MediaBindings|import Player|import Voice)/m);
+  assert.doesNotMatch(transfer, imports('Player'));
+  assert.doesNotMatch(transfer, imports('Voice'));
+  assert.doesNotMatch(player, imports('MediaTransfer'));
+  assert.doesNotMatch(voice, imports('MediaTransfer'));
+  assert.match(bindings, /foreign import javascript/);
+  assert.match(main, /mediaManagementController/);
+  assert.match(main, /controlMediaManagement MediaManagementInputs/);
+  assert.match(main, /catalogNetwork \$ mediaCatalogChanged mediaManagement/);
+});

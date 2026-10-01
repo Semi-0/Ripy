@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { createAccessControl, readAccessPassword } from '../src/access-control.js';
+import { createAccessControl, readAccessPassword, readAdminPassword } from '../src/access-control.js';
 import { buildServer } from '../src/server.js';
 
 async function fixture(t) {
@@ -50,6 +50,8 @@ async function login(app, password) {
 test('password configuration and secure cookie attributes are explicit', () => {
   assert.equal(readAccessPassword({}), undefined);
   assert.equal(readAccessPassword({ ROOM_PASSWORD: 'long enough' }), 'long enough');
+  assert.equal(readAdminPassword({ MEDIA_ADMIN_PASSWORD: 'admin long enough' }), 'admin long enough');
+  assert.throws(() => readAdminPassword({ MEDIA_ADMIN_PASSWORD: 'short' }), /between 8 and 1024/);
   assert.throws(() => readAccessPassword({ ROOM_PASSWORD: 'short' }), /between 8 and 1024/);
   const access = createAccessControl({ password: 'long enough', now: () => 0 });
   const result = access.login('long enough', 'viewer');

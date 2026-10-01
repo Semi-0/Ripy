@@ -6,9 +6,11 @@ import { fileURLToPath } from 'node:url';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { createAccessControl } from './access-control.js';
-import { readMediaCatalog } from './catalog.js';
+import { createMediaLibrary, defaultUploadMaxBytes } from './media-library.js';
+import { createRequestAuthorizer, secureOrLoopback, Viewer } from './media-authorization.js';
+import { installMediaManagement } from './media-management.js';
 import { decodeAndValidate, ProtocolError } from './protocol.js';
-import { createEmptyRoom, transitionRoom } from './room.js';
+import { clearDeletedMedia, createEmptyRoom, transitionRoom } from './room.js';
 import { createVoiceIceResponse, readVoiceIceConfiguration } from './voice-ice.js';
 import { createVoiceRoom } from './voice-room.js';
 
@@ -89,6 +91,9 @@ export async function buildServer({
   now = Date.now,
   accessPassword = undefined,
   accessSessionTtlMs = undefined,
+  adminPassword = undefined,
+  adminSessionTtlMs = 60 * 60 * 1000,
+  mediaUploadMaxBytes = defaultUploadMaxBytes,
   voiceIceConfiguration = readVoiceIceConfiguration()
 } = {}) {
   let app;
@@ -98,6 +103,13 @@ export async function buildServer({
     app = Fastify({ logger, https });
   }
   const access = createAccessControl({ password: accessPassword, now, sessionTtlMs: accessSessionTtlMs });
+  const adminAccess = createAccessControl({
+    password: adminPassword,
+    cookieName: 'ripy_admin_session',
+    now,
+    sessionTtlMs: adminSessionTtlMs
+  });
+  const authorizer = createRequestAuthorizer({ viewerAccess: access, adminAccess });
   const secureCookies = https !== undefined;
   if (access.enabled) {
     app.addContentTypeParser('application/x-www-form-urlencoded',
@@ -112,7 +124,7 @@ export async function buildServer({
     app.addHook('onRequest', async (request, reply) => {
       const path = new URL(request.raw.url, 'http://ripy.invalid').pathname;
       const publicRequest = path === '/login' || path === '/auth/login' || path.startsWith('/assets/');
-      if (publicRequest || access.authenticated(request.headers.cookie)) {
+      if (publicRequest || authorizer.role(request) >= Viewer) {
         return;
       } else if (path === '/' && request.method === 'GET') {
         return reply.code(303).header('location', '/login').send();
@@ -123,8 +135,17 @@ export async function buildServer({
   } else {
     // Preserve the password-free localhost prototype unless ROOM_PASSWORD is configured.
   }
-  const catalog = await readMediaCatalog(mediaDirectory);
-  const context = { room: createEmptyRoom(randomUUID(), now()), catalog, clients: new Set(), now, log: app.log };
+  const library = await createMediaLibrary({
+    directory: mediaDirectory,
+    maxUploadBytes: mediaUploadMaxBytes
+  });
+  const context = {
+    room: createEmptyRoom(randomUUID(), now()),
+    catalog: library,
+    clients: new Set(),
+    now,
+    log: app.log
+  };
 
   await app.register(staticFiles, { root: mediaDirectory, serve: false, acceptRanges: true });
   await app.register(staticFiles, { root: publicDirectory, prefix: '/assets/', decorateReply: false });
@@ -151,8 +172,16 @@ export async function buildServer({
       return reply.code(404).send({ error: 'Password access is not configured.' });
     } else if (!sameOrigin(request)) {
       return reply.code(403).send({ error: 'Cross-origin login is not allowed.' });
+    } else if (!secureOrLoopback(request)) {
+      return reply.code(403).send({ error: 'Login requires HTTPS or loopback.' });
     } else {
-      const result = access.login(request.body?.password, request.ip);
+      let password;
+      if (request.body === null || request.body === undefined) {
+        password = undefined;
+      } else {
+        password = request.body.password;
+      }
+      const result = access.login(password, request.ip);
       switch (result.status) {
         case 'authenticated':
           return loginHeaders(reply)
@@ -187,13 +216,31 @@ export async function buildServer({
       return reply.code(503).type('text/plain').send('Reflex frontend is not installed. Follow frontend/README.md to install a successful CI artifact, then restart this server.');
     }
   });
-  app.get('/api/movies', async () => ({ movies: [...catalog.values()] }));
+  app.get('/api/movies', async () => ({ movies: library.snapshot().movies }));
+  installMediaManagement(app, {
+    library,
+    authorizer,
+    adminAccess,
+    secureCookies,
+    sameOrigin,
+    mediaDeleted(mediaId) {
+      const next = clearDeletedMedia(context.room, mediaId, now());
+      if (next !== context.room) {
+        context.room = next;
+        for (const client of context.clients) {
+          send(client, next);
+        }
+      } else {
+        // Deleting an unselected movie does not change the room revision.
+      }
+    }
+  });
   app.get('/api/voice/ice', async (_request, reply) => {
     reply.header('cache-control', 'no-store');
     return createVoiceIceResponse(voiceIceConfiguration, now);
   });
   app.get('/media/:filename', async (request, reply) => {
-    if (!catalog.has(request.params.filename)) {
+    if (!library.has(request.params.filename)) {
       return reply.code(404).send({ error: 'Movie is unavailable.' });
     } else {
       return reply.sendFile(request.params.filename);

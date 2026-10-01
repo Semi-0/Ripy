@@ -9,6 +9,9 @@ import Catalog
 import Connection
 import Ducking
 import MovieView
+import MediaManagement
+import MediaManagementView
+import MediaTransfer
 import Network
 import Player
 import Protocol hiding (SelectMovie)
@@ -24,7 +27,8 @@ main = mainWidget app
 -- only this composition assigns movie commands and browser reactions to them.
 app :: MonadWidget t m => m ()
 app = do
-  catalogState <- catalogNetwork
+  (mediaManagement, controlMediaManagement) <- mediaManagementController
+  catalogState <- catalogNetwork $ mediaCatalogChanged mediaManagement
   roomLink <- roomConnection
   (room, accepted) <- acceptSnapshots
     (connectionConnected roomLink)
@@ -44,12 +48,15 @@ app = do
         <*> playerState player
         <*> latestError
   (voice, controlVoice) <- voiceController
-  (signals, voiceSignals) <- elAttr "main" ("data-reflex-ready" =: "true") $ do
+  (signals, mediaSignals, voiceSignals) <- elAttr "main" ("data-reflex-ready" =: "true") $ do
     movieSignals <- movieView presentation
+    managementSignals <- mediaManagementView $ mediaManagementPresentation
+      <$> mediaManagementState mediaManagement
+      <*> catalogState
     callSignals <- voiceView $ voicePresentation <$> voiceState voice
     el "footer" $ text
       "Movie controls are shared. Volume and voice mute are local. Voice travels directly between the two browsers."
-    pure (movieSignals, callSignals)
+    pure (movieSignals, managementSignals, callSignals)
 
   let reactions = specializeMovieSignals signals
   baseVolume <- holdDyn 1 $ reactionEvent volumeReaction reactions
@@ -69,6 +76,12 @@ app = do
       outgoing = mergeWith (++) [commands reactions, playerMediaCommands player]
   controlVideo videoInputs
   transmitCommands roomLink outgoing
+  controlMediaManagement MediaManagementInputs
+    { uploadRequests = uploadPressed mediaSignals
+    , adminUnlockRequests = unlockSubmitted mediaSignals
+    , adminLogoutRequests = logoutPressed mediaSignals
+    , adminDeleteRequests = deletePressed mediaSignals
+    }
   let muteRequests = attachPromptlyDynWith
         (\state _ -> not $ voiceMuted state)
         (voiceState voice)
@@ -79,6 +92,24 @@ app = do
     , voiceMuteRequests = muteRequests
     , voiceEnableRequests = enableAudioPressed voiceSignals
     }
+
+mediaManagementPresentation
+  :: MediaManagementState -> CatalogState -> MediaManagementViewModel
+mediaManagementPresentation state catalog = MediaManagementViewModel
+  { uploadButton = ButtonView ("id" =: "media-upload") label enabled
+  , uploadProgress = progress
+  , adminConfigured = adminEnabled access
+  , adminUnlocked = deleteAllowed access
+  , deleteOptions = map movieOption $ catalogMovies catalog
+  , managementMessage = mediaMessage state
+  }
+  where
+    access = mediaAccess state
+    (label, enabled, progress) = case mediaTransfer state of
+      TransferIdle -> ("Upload movie", uploadAllowed access, Nothing)
+      Uploading amount -> ("Uploading…", False, Just amount)
+      TransferFailed _ -> ("Retry upload", uploadAllowed access, Nothing)
+    movieOption movie = (movieId movie, movieTitle movie)
 
 voicePresentation :: VoiceState -> VoiceViewModel
 voicePresentation state = VoiceViewModel

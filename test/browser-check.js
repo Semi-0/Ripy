@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { mkdtemp, mkdir, rm, copyFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, readFile, rm, copyFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { chromium } from 'playwright';
@@ -127,8 +127,47 @@ async function checkVoice(a, b) {
   console.log('PASS independent peer voice, local mute, leave/rejoin and autoplay recovery');
 }
 
-async function runChecks(a, b) {
+async function checkMediaManagement(a, b, uploadBytes) {
+  const initialRevision = await a.evaluate(() => window.roomSockets().at(-1).snapshot.revision);
+  await a.locator('#media-file').setInputFiles({
+    name: 'uploaded.mp4',
+    mimeType: 'video/mp4',
+    buffer: uploadBytes
+  });
+  await a.click('#media-upload');
+  for (const page of [a, b]) {
+    await until(page, () => [...document.querySelector('#movies').options]
+      .some(option => option.value === 'uploaded.mp4'));
+  }
+  assert.equal(await a.evaluate(() => window.roomSockets().at(-1).snapshot.revision), initialRevision);
+  assert.equal(await b.evaluate(() => window.roomSockets().at(-1).snapshot.revision), initialRevision);
+  assert.equal(await a.locator('#movies').inputValue(), '');
+  assert.equal(await b.locator('#movies').inputValue(), '');
+  assert.equal(await a.locator('#media-delete').isVisible(), false);
+
+  await a.selectOption('#movies', 'uploaded.mp4');
+  await until(b, () => document.querySelector('#movies').value === 'uploaded.mp4');
+  const selectedRevision = await a.evaluate(() => window.roomSockets().at(-1).snapshot.revision);
+  await a.locator('#media-admin-password').fill('browser administrator password');
+  await a.click('#media-admin-unlock');
+  await a.locator('#media-delete').waitFor({ state: 'visible' });
+  await a.selectOption('#media-delete-choice', 'uploaded.mp4');
+  a.once('dialog', dialog => dialog.accept());
+  await a.click('#media-delete');
+  for (const page of [a, b]) {
+    await until(page, () => ![...document.querySelector('#movies').options]
+      .some(option => option.value === 'uploaded.mp4'));
+    await until(page, () => window.roomSockets().at(-1).snapshot.mode === 'empty');
+  }
+  assert.equal(await a.evaluate(() => window.roomSockets().at(-1).snapshot.revision), selectedRevision + 1);
+  await a.click('#media-admin-logout');
+  await a.locator('#media-delete').waitFor({ state: 'hidden' });
+  console.log('PASS viewer upload, live catalogs, explicit selection and admin-only deletion');
+}
+
+async function runChecks(a, b, uploadBytes) {
   await checkVoice(a, b);
+  await checkMediaManagement(a, b, uploadBytes);
   await a.selectOption('#movies', 'test.mp4');
   await until(a, () => !document.querySelector('#play').disabled);
   await until(b, () => !document.querySelector('#play').disabled);
@@ -305,7 +344,12 @@ try {
     '-t', '30', '-c:v', 'libx264', '-preset', 'ultrafast', '-pix_fmt', 'yuv420p',
     '-c:a', 'aac', '-movflags', '+faststart', join(directory, 'test.mp4')]);
   await copyFile(join(directory, 'test.mp4'), join(directory, 'alternate.mp4'));
-  app = await buildServer({ mediaDirectory: directory, accessPassword: 'browser screening password' });
+  const uploadBytes = await readFile(join(directory, 'test.mp4'));
+  app = await buildServer({
+    mediaDirectory: directory,
+    accessPassword: 'browser screening password',
+    adminPassword: 'browser administrator password'
+  });
   const address = await app.listen({ host: '127.0.0.1', port: 0 });
   const launchOptions = {
     headless: true,
@@ -341,7 +385,7 @@ try {
     await until(page, () => !document.querySelector('#movies').disabled);
   }
   console.log('PASS shared-password login gates the compiled browser application');
-  await runChecks(a, b);
+  await runChecks(a, b, uploadBytes);
   await checkReflexEdges(a);
   assert.deepEqual(errors, []);
   console.log('PASS no browser JavaScript errors');

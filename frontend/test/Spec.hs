@@ -4,6 +4,7 @@ import Control.Monad (unless, forM_)
 import Data.Aeson (eitherDecode, decode, Value)
 import qualified Data.ByteString.Lazy.Char8 as BL
 import Ducking
+import MediaManagement
 import Protocol
 import Model
 import Selection
@@ -14,6 +15,17 @@ check label result = unless result $ fail label
 
 main :: IO ()
 main = do
+  let access = MediaAccess True False True 1000
+      loaded = mediaManagementAfter (AccessReceived access) initialMediaManagementState
+      started = mediaManagementAfter UploadStarted loaded
+      advanced = mediaManagementAfter (UploadAdvanced 2) started
+      completed = mediaManagementAfter (UploadCompleted "movie.mp4") advanced
+  check "media access is explicit" $ mediaAccess loaded == access
+  check "upload progress is clamped" $ mediaTransfer advanced == Uploading 1
+  check "upload completion preserves access" $
+    mediaAccess completed == access && mediaTransfer completed == TransferIdle
+  check "media failure remains visible" $
+    mediaTransfer (mediaManagementAfter (MutationFailed "failed") loaded) == TransferFailed "failed"
   let empty = RoomState "a" 0 Nothing Empty 0 1000 Nothing
       playing = RoomState "a" 2 (Just "453.MP4") Playing 12 1000 Nothing
       paused = playing { mode = Paused }

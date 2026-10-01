@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createEmptyRoom, transitionRoom } from '../src/room.js';
+import { clearDeletedMedia, createEmptyRoom, transitionRoom } from '../src/room.js';
 import { decodeAndValidate } from '../src/protocol.js';
 import { positionAt } from '../src/timeline.js';
 
@@ -61,4 +61,25 @@ test('protocol rejects malformed, unexpected, and nonfinite fields', () => {
     { type: 'pause', reason: 'ended' }]) {
     assert.deepEqual(decodeAndValidate(JSON.stringify(message)), message);
   }
+});
+
+
+test('deleting selected media clears the room exactly once', () => {
+  const selected = {
+    ...createEmptyRoom('epoch', 100),
+    revision: 4,
+    mediaId: 'selected.mp4',
+    mode: 'playing',
+    positionSeconds: 12
+  };
+  assert.equal(clearDeletedMedia(selected, 'other.mp4', 200), selected);
+  assert.deepEqual(clearDeletedMedia(selected, 'selected.mp4', 200), {
+    ...selected,
+    revision: 5,
+    mediaId: null,
+    mode: 'empty',
+    positionSeconds: 0,
+    anchorServerTimeMs: 200,
+    pauseReason: null
+  });
 });

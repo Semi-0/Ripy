@@ -13,10 +13,12 @@ import Protocol
 data CatalogState = CatalogLoading | CatalogLoaded [Movie] | CatalogFailed Text
   deriving (Eq, Show)
 
-catalogNetwork :: MonadWidget t m => m (Dynamic t CatalogState)
-catalogNetwork = do
+catalogNetwork :: MonadWidget t m => Event t () -> m (Dynamic t CatalogState)
+catalogNetwork refreshRequests = do
   (responses, respond) <- newTriggerEvent
-  getPostBuild >>= performEvent_ . fmap (const $ liftIO $ B.afterMount $ B.fetchCatalog respond)
+  postBuild <- getPostBuild
+  let requests = leftmost [() <$ postBuild, refreshRequests]
+  performEvent_ $ (liftIO $ B.afterMount $ B.fetchCatalog respond) <$ requests
   holdDyn CatalogLoading $ decodeCatalog <$> responses
 
 decodeCatalog :: Either Text Text -> CatalogState

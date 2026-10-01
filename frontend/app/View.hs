@@ -2,6 +2,7 @@
 module View
   ( ButtonView(..), ChoiceView(..), RangeView(..)
   , buttonView, choiceView, rangeView
+  , fileInputView, textInputView, progressView
   , dynamicTextView, emptyElementView
   , conditional, visibleAttributes
   ) where
@@ -9,6 +10,7 @@ module View
 import Data.Map (Map)
 import qualified Data.Map as Map
 import Data.Text (Text)
+import qualified Data.Text as T
 import Reflex.Dom
 
 data ButtonView = ButtonView
@@ -80,6 +82,26 @@ rangeView initial initialValue model = do
     & inputElementConfig_elementConfig . elementConfig_modifyAttributes
       .~ (disabledChange <$> updated enabled)
   pure $ _inputElement_input input
+
+fileInputView :: MonadWidget t m => Map AttributeName Text -> m ()
+fileInputView attributes = do
+  _ <- inputElement $ def
+    & inputElementConfig_elementConfig . elementConfig_initialAttributes .~ attributes
+  pure ()
+
+textInputView :: MonadWidget t m => Map AttributeName Text -> m (Dynamic t Text)
+textInputView attributes = do
+  input <- inputElement $ def
+    & inputElementConfig_elementConfig . elementConfig_initialAttributes .~ attributes
+  pure $ _inputElement_value input
+
+progressView :: MonadWidget t m => Text -> Dynamic t (Maybe Double) -> m ()
+progressView ident progress = elDynAttr "progress" (attributes <$> progress) blank
+  where
+    attributes value = case value of
+      Nothing -> Map.fromList [("id", ident), ("max", "1"), ("value", "0"), ("hidden", "")]
+      Just amount -> Map.fromList
+        [("id", ident), ("max", "1"), ("value", T.pack $ show $ max 0 $ min 1 amount)]
 
 dynamicTextView :: MonadWidget t m
   => Text -> Map Text Text -> Dynamic t Text -> m ()

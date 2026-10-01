@@ -1,7 +1,7 @@
 name: Reflex frontend
 on:
   push:
-    branches: [codex/reflex-frontend]
+    branches: [codex/reflex-frontend, codex/media-management]
   workflow_dispatch:
 permissions:
   contents: read

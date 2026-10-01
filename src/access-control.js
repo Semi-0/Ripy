@@ -1,6 +1,5 @@
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 
-const cookieName = 'ripy_session';
 const defaultSessionTtlMs = 12 * 60 * 60 * 1000;
 const attemptWindowMs = 5 * 60 * 1000;
 const maximumAttempts = 5;
@@ -9,7 +8,7 @@ function digest(value) {
   return createHash('sha256').update(value).digest();
 }
 
-function cookieValue(header) {
+function cookieValue(header, cookieName) {
   if (typeof header !== 'string') {
     return null;
   } else {
@@ -25,18 +24,31 @@ function cookieValue(header) {
   }
 }
 
-export function readAccessPassword(environment = process.env) {
-  const password = environment.ROOM_PASSWORD;
+function readPassword(name, environment) {
+  const password = environment[name];
   if (password === undefined) {
     return undefined;
   } else if (typeof password !== 'string' || password.length < 8 || password.length > 1024) {
-    throw new Error('ROOM_PASSWORD must contain between 8 and 1024 characters.');
+    throw new Error(`${name} must contain between 8 and 1024 characters.`);
   } else {
     return password;
   }
 }
 
-export function createAccessControl({ password, now = Date.now, sessionTtlMs = defaultSessionTtlMs } = {}) {
+export function readAccessPassword(environment = process.env) {
+  return readPassword('ROOM_PASSWORD', environment);
+}
+
+export function readAdminPassword(environment = process.env) {
+  return readPassword('MEDIA_ADMIN_PASSWORD', environment);
+}
+
+export function createAccessControl({
+  password,
+  cookieName = 'ripy_session',
+  now = Date.now,
+  sessionTtlMs = defaultSessionTtlMs
+} = {}) {
   if (password === undefined) {
     return { enabled: false };
   } else if (typeof password !== 'string' || password.length < 8 || password.length > 1024) {
@@ -71,11 +83,11 @@ export function createAccessControl({ password, now = Date.now, sessionTtlMs = d
 
   function authenticated(cookieHeader) {
     prune();
-    const token = cookieValue(cookieHeader);
+    const token = cookieValue(cookieHeader, cookieName);
     return token !== null && sessions.has(token);
   }
 
-  function login(candidate, address) {
+  function authenticate(candidate, address) {
     prune();
     const current = attempts.get(address);
     if (current !== undefined && current.count >= maximumAttempts) {
@@ -90,6 +102,15 @@ export function createAccessControl({ password, now = Date.now, sessionTtlMs = d
       return { status: 'invalid' };
     } else {
       attempts.delete(address);
+      return { status: 'authenticated' };
+    }
+  }
+
+  function login(candidate, address) {
+    const result = authenticate(candidate, address);
+    if (result.status !== 'authenticated') {
+      return result;
+    } else {
       const token = randomBytes(32).toString('base64url');
       sessions.set(token, now() + sessionTtlMs);
       return { status: 'authenticated', token };
@@ -97,7 +118,7 @@ export function createAccessControl({ password, now = Date.now, sessionTtlMs = d
   }
 
   function logout(cookieHeader) {
-    const token = cookieValue(cookieHeader);
+    const token = cookieValue(cookieHeader, cookieName);
     if (token !== null) {
       sessions.delete(token);
     } else {
@@ -126,5 +147,7 @@ export function createAccessControl({ password, now = Date.now, sessionTtlMs = d
     return attributes.join('; ');
   }
 
-  return { enabled: true, authenticated, login, logout, sessionCookie, expiredCookie };
+  return {
+    enabled: true, authenticated, authenticate, login, logout, sessionCookie, expiredCookie
+  };
 }

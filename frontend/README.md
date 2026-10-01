@@ -123,3 +123,14 @@ Pause reasons sent by clients are `user`, `buffering`, and `ended`. Omitting
 At estimated server time `101100`, the example playing snapshot targets 121
 seconds. A paused snapshot stays at its anchor position. A new epoch denotes a
 server restart; revisions are compared only within an epoch.
+
+
+## Media-management modules
+
+`MediaManagement` is the pure access/transfer model. `MediaManagementView`
+composes generic file, password, choice, progress, and button atoms without
+performing browser effects. `MediaTransfer` owns upload/admin/delete reactions
+and delegates XHR, EventSource, confirmation, and fetch operations to
+`MediaBindings`. `Main` is the only point that connects these signals and feeds
+catalog-change events back to `Catalog`; neither `Player` nor `Voice` imports
+media management.
