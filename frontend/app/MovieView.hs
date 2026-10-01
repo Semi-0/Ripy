@@ -49,7 +49,7 @@ movieView model = do
   movieHeader
   selectedEvent <- movieChooser model
   elDynAttr "p" (emptyAttributes <$> model) $
-    text "No movies yet. Add an MP4 to media/, restart the server, and refresh."
+    text "No movies yet. Upload an MP4 in the library panel below."
   (playEvent, pauseEvent, seekEvent, volumeEvent, enableEvent, fullscreenEvent) <-
     playerView model
   pure MovieSignals

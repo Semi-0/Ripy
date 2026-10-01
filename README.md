@@ -34,9 +34,7 @@ retains the preceding installation in `frontend-dist.previous/`. Without an
 installed build, `/` returns installation instructions with HTTP 503. Runtime
 does not build Haskell automatically. Paths below are relative to this checkout.
 
-Open **http://localhost:3000** in two browser windows. Add your own
-browser-compatible MP4 files to `media/`, restart the server, and
-refresh both windows. H.264 video with AAC audio in an MP4 container is a useful
+Open **http://localhost:3000** in two browser windows. An authorized viewer can upload a browser-compatible MP4 from the library panel. The movie appears in every open browser, then either viewer explicitly selects it from the movie chooser. Existing files may also be placed in `media/` before startup. H.264 video with AAC audio in an MP4 container is a useful
 starting point. The server does not convert files. It reads the catalog once at
 startup, including only immediate regular `.mp4` files (not symlinks).
 
@@ -47,7 +45,7 @@ if FFmpeg is installed, run this from the repository root, then restart the serv
 ffmpeg -f lavfi -i testsrc2=size=640x360:rate=24 -f lavfi -i sine=frequency=220:sample_rate=44100 -t 30 -c:v libx264 -pix_fmt yuv420p -c:a aac -movflags +faststart media/demo.mp4
 ```
 
-The webpage explains where to add files when the catalog is empty. Browser
+The webpage exposes upload progress and explains when upload is unavailable. Uploading never selects or starts a movie automatically. Browser
 autoplay restrictions may require each viewer to click **Enable playback**.
 Voice is opt-in: each viewer clicks **Join voice** and grants microphone
 permission. **Leave voice** closes the peer connection and stops that browser's
@@ -147,8 +145,50 @@ share `lan-key.pem`. If installing a private CA on the other device is
 undesirable, use a real domain with Caddy/nginx and a publicly trusted
 certificate, or use a private-network service that provides trusted HTTPS.
 
-The shared-password gate has no accounts or database. There is no upload
-endpoint, Lain integration, transcoding, or public deployment in this example.
+The shared-password gate has no accounts or database. Media sessions and the catalog are held in memory, while completed movies remain in the configured media directory. There is no Lain integration, transcoding, resumable upload, or public deployment in this example.
+
+## Manage the movie library
+
+Set a separate administrator password to enable deletion. It must contain 8 to
+1024 characters and must differ operationally from the shared viewer password:
+
+```sh
+read -s 'MEDIA_ADMIN_PASSWORD?Media administrator password: '
+echo
+export MEDIA_ADMIN_PASSWORD
+export MEDIA_UPLOAD_MAX_BYTES=21474836480
+npm start
+```
+
+Viewer and administrator sessions are opaque, time-limited tokens held only in
+server memory. `ripy_session` grants viewing and upload access;
+`ripy_admin_session` additionally grants deletion. Hiding a browser control is
+not the security boundary: the server checks the role again for every mutation.
+Restarting the server invalidates both kinds of session.
+
+The browser uploads the selected MP4 directly to the same API available to a
+CLI. `curl --user` prompts for the password when it is omitted from the command,
+which avoids putting it in shell history:
+
+```sh
+curl --user viewer --upload-file movie.mp4 \
+  --header 'Content-Type: video/mp4' \
+  https://HOST/api/media/movie.mp4
+
+curl --user admin --request DELETE \
+  https://HOST/api/media/movie.mp4
+```
+
+Use HTTPS for credentials sent across a network. HTTP Basic credentials are
+accepted without HTTPS only from loopback. When `ROOM_PASSWORD` is unset,
+password-free upload is likewise restricted to loopback. The default upload
+limit is 20 GiB and can be changed with `MEDIA_UPLOAD_MAX_BYTES`.
+
+Uploads are non-resumable. The server validates the filename, declared length,
+configured limit, and MP4 `ftyp` header while keeping the file outside the
+catalog. It publishes the completed file atomically and rejects duplicate names
+with HTTP 409. Deleting the movie currently selected by the room clears the
+shared player; deleting any other movie leaves playback state unchanged.
 
 ## How it works
 
@@ -163,7 +203,10 @@ Browser A ◀────── WebRTC audio, peer to peer ──────▶
            └── `/voice` signaling via Fastify ──┘
 ```
 
-- `src/catalog.js`: reads approved files and creates public movie URLs.
+- `src/catalog.js`: scans approved files and creates public movie URLs.
+- `src/media-library.js`: owns atomic upload, deletion, snapshots, and catalog events.
+- `src/media-authorization.js`: resolves anonymous, viewer, and administrator authority.
+- `src/media-management.js`: exposes the shared browser and CLI media API.
 - `src/room.js`: pure room transitions, with time supplied by the caller.
 - `src/protocol.js`: validates incoming commands and produces precise errors.
 - `src/server.js`: HTTP delivery and WebSocket effects; owns the in-memory room.
@@ -177,7 +220,11 @@ Browser A ◀────── WebRTC audio, peer to peer ──────▶
 - `frontend/app/View.hs`: Reflex-DOM interface and user intentions.
 - `frontend/app/Connection.hs`: sockets, clock sampling, timeout and reconnection.
 - `frontend/app/Player.hs`: media effects, cancellation, drift and recovery.
-- `frontend/app/Bindings.hs`: small browser API bindings.
+- `frontend/app/Bindings.hs`: shared small browser API bindings.
+- `frontend/src/MediaManagement.hs`: pure access and transfer state.
+- `frontend/app/MediaTransfer.hs`: media-management behavior and effects.
+- `frontend/app/MediaManagementView.hs`: behavior-free library controls.
+- `frontend/app/MediaBindings.hs`: upload, SSE, and admin browser bindings.
 - `frontend/src/VoiceProtocol.hs`: explicit voice signaling and ICE JSON types.
 - `frontend/app/Voice.hs`: independent voice FRP network and resource boundary.
 - `frontend/app/VoiceView.hs`: behavior-free composition of generic view atoms.
@@ -230,6 +277,12 @@ HTTP endpoints:
 | `GET /assets/style.css` | Monochrome stylesheet |
 | `GET /reflex/...` | Compiled Haskell assets (also available as a preview page) |
 | `GET /api/movies` | `{ "movies": [{ "id", "title", "url" }] }` |
+| `GET /api/media/access` | Current upload/delete capabilities and upload limit |
+| `PUT /api/media/:filename` | Raw MP4 upload for viewers and administrators |
+| `DELETE /api/media/:filename` | Delete an MP4; administrator only |
+| `GET /api/media/events` | Server-sent catalog revision events |
+| `POST /api/media/admin/session` | Create an administrator browser session |
+| `DELETE /api/media/admin/session` | End an administrator browser session |
 | `GET /api/voice/ice` | Browser ICE servers and short-lived TURN credentials |
 | `GET /media/:filename` | Approved MP4; supports `Range` / `206` responses |
 | WebSocket `/room` | Room state, commands, ping/pong, errors |

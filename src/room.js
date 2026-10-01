@@ -8,6 +8,17 @@ export function createEmptyRoom(epoch, now) {
   };
 }
 
+export function clearDeletedMedia(state, mediaId, now) {
+  if (state.mediaId !== mediaId) {
+    return state;
+  } else {
+    return {
+      ...state, revision: state.revision + 1, mediaId: null, mode: 'empty',
+      positionSeconds: 0, anchorServerTimeMs: now, pauseReason: null
+    };
+  }
+}
+
 // Caller validates wire messages. This function owns only room transitions.
 export function transitionRoom(state, command, now, catalog) {
   const next = {
