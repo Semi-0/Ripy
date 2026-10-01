@@ -106,6 +106,23 @@ start it again. Do not put a real password in the repository, README, command
 line, or a committed configuration file. For a managed deployment, provide
 `ROOM_PASSWORD` through the host's secret or environment-variable manager.
 
+For a local server, passwords may instead be kept in a gitignored JavaScript
+configuration. Copy the example, edit the two values, and restart Ripy:
+
+```sh
+cp ripy.config.example.js ripy.config.js
+```
+
+```js
+export default {
+  roomPassword: "choose a room password",
+  mediaAdminPassword: "choose an administrator password"
+};
+```
+
+Environment variables take precedence over `ripy.config.js`. Never commit or
+share the local file because it contains the plaintext passwords.
+
 The server defaults to `127.0.0.1`. To watch from devices on the same local
 network, stop the existing server and run `npm run start:lan`. Open
 `http://YOUR_MAC_LAN_IP:3000` on each device. Keep this Mac awake while watching.

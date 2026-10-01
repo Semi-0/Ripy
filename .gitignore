@@ -8,5 +8,6 @@ frontend-native
 dist-newstyle/
 test-results/
 .certs/
+ripy.config.js
 media/*
 !media/.gitkeep
