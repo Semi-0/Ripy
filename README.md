@@ -160,6 +160,12 @@ export MEDIA_UPLOAD_MAX_BYTES=21474836480
 npm start
 ```
 
+`MEDIA_ADMIN_PASSWORD` must be present in the environment of the Node.js server
+when it starts. The website does not create or change this password. Its
+administrator password field only submits the configured server password to
+open a one-hour deletion session in that browser. After changing the variable,
+restart Ripy so the server reads the new value.
+
 Viewer and administrator sessions are opaque, time-limited tokens held only in
 server memory. `ripy_session` grants viewing and upload access;
 `ripy_admin_session` additionally grants deletion. Hiding a browser control is

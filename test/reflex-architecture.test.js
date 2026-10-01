@@ -97,4 +97,6 @@ test('media management keeps view, behavior and effects separated', async () => 
   assert.match(main, /mediaManagementController/);
   assert.match(main, /controlMediaManagement MediaManagementInputs/);
   assert.match(main, /catalogNetwork \$ mediaCatalogChanged mediaManagement/);
+  assert.match(main, /^administratorStatus :: MediaAccess -> Text/m);
+  assert.match(view, /adminStatusText :: Text/);
 });

@@ -100,6 +100,7 @@ mediaManagementPresentation state catalog = MediaManagementViewModel
   , uploadProgress = progress
   , adminConfigured = adminEnabled access
   , adminUnlocked = deleteAllowed access
+  , adminStatusText = administratorStatus access
   , deleteOptions = map movieOption $ catalogMovies catalog
   , managementMessage = mediaMessage state
   }
@@ -110,6 +111,13 @@ mediaManagementPresentation state catalog = MediaManagementViewModel
       Uploading amount -> ("Uploading…", False, Just amount)
       TransferFailed _ -> ("Retry upload", uploadAllowed access, Nothing)
     movieOption movie = (movieId movie, movieTitle movie)
+
+administratorStatus :: MediaAccess -> Text
+administratorStatus access = case deleteAllowed access of
+  True -> "Administrator deletion is unlocked for this browser."
+  False -> case adminEnabled access of
+    True -> "Enter the server administrator password to unlock deletion."
+    False -> "Deletion is disabled. Set MEDIA_ADMIN_PASSWORD on the server and restart Ripy."
 
 voicePresentation :: VoiceState -> VoiceViewModel
 voicePresentation state = VoiceViewModel

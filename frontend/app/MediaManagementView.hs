@@ -14,6 +14,7 @@ data MediaManagementViewModel = MediaManagementViewModel
   , uploadProgress :: Maybe Double
   , adminConfigured :: Bool
   , adminUnlocked :: Bool
+  , adminStatusText :: Text
   , deleteOptions :: [(Text, Text)]
   , managementMessage :: Text
   } deriving (Eq, Show)
@@ -36,6 +37,8 @@ mediaManagementView model = elAttr "section"
       [("id", "media-file"), ("type", "file"), ("accept", "video/mp4,.mp4")]
     uploaded <- buttonView $ uploadButton <$> model
     progressView "media-upload-progress" $ uploadProgress <$> model
+    dynamicTextView "p" (("id" =: "media-admin-status") <> ("role" =: "status")) $
+      adminStatusText <$> model
     password <- textInputView $ Map.fromList
       [("id", "media-admin-password"), ("type", "password"), ("autocomplete", "current-password"), ("placeholder", "administrator password")]
     unlocked <- buttonView $ unlockButton <$> model

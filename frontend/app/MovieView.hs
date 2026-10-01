@@ -69,7 +69,6 @@ movieHeader = el "header" $ do
     el "span" $ text ">"
     text " cloud cinema"
     elClass "span" "cursor" $ text "_"
-  elClass "p" "intro" $ text "Choose a movie. Watch together."
 
 movieChooser :: MonadWidget t m
   => Dynamic t MovieViewModel -> m (Event t Text)

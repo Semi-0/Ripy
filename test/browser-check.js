@@ -144,6 +144,10 @@ async function checkMediaManagement(a, b, uploadBytes) {
   assert.equal(await a.locator('#movies').inputValue(), '');
   assert.equal(await b.locator('#movies').inputValue(), '');
   assert.equal(await a.locator('#media-delete').isVisible(), false);
+  assert.equal(
+    await a.locator('#media-admin-status').textContent(),
+    'Enter the server administrator password to unlock deletion.'
+  );
 
   await a.selectOption('#movies', 'uploaded.mp4');
   await until(b, () => document.querySelector('#movies').value === 'uploaded.mp4');
@@ -151,6 +155,10 @@ async function checkMediaManagement(a, b, uploadBytes) {
   await a.locator('#media-admin-password').fill('browser administrator password');
   await a.click('#media-admin-unlock');
   await a.locator('#media-delete').waitFor({ state: 'visible' });
+  assert.equal(
+    await a.locator('#media-admin-status').textContent(),
+    'Administrator deletion is unlocked for this browser.'
+  );
   await a.selectOption('#media-delete-choice', 'uploaded.mp4');
   a.once('dialog', dialog => dialog.accept());
   await a.click('#media-delete');
@@ -162,10 +170,15 @@ async function checkMediaManagement(a, b, uploadBytes) {
   assert.equal(await a.evaluate(() => window.roomSockets().at(-1).snapshot.revision), selectedRevision + 1);
   await a.click('#media-admin-logout');
   await a.locator('#media-delete').waitFor({ state: 'hidden' });
+  assert.equal(
+    await a.locator('#media-admin-status').textContent(),
+    'Enter the server administrator password to unlock deletion.'
+  );
   console.log('PASS viewer upload, live catalogs, explicit selection and admin-only deletion');
 }
 
 async function runChecks(a, b, uploadBytes) {
+  assert.equal((await a.locator('body').innerText()).includes('Choose a movie. Watch together.'), false);
   await checkVoice(a, b);
   await checkMediaManagement(a, b, uploadBytes);
   await a.selectOption('#movies', 'test.mp4');
