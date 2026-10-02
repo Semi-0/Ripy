@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import { createAccessControl, readAccessPassword, readAdminPassword } from '../src/access-control.js';
 import { buildServer } from '../src/server.js';
 
-async function fixture(t) {
+async function fixture(t, options = {}) {
   const directory = await mkdtemp(join(tmpdir(), 'ripy-access-'));
   const mediaDirectory = join(directory, 'media');
   const frontendDirectory = join(directory, 'frontend');
@@ -21,7 +21,8 @@ async function fixture(t) {
     frontendDirectory,
     accessPassword: 'correct horse battery staple',
     accessSessionTtlMs: 10_000,
-    now: () => now
+    now: () => now,
+    ...options
   });
   await app.ready();
   t.after(async () => {
@@ -58,6 +59,23 @@ test('password configuration and secure cookie attributes are explicit', () => {
   assert.equal(result.status, 'authenticated');
   assert.match(access.sessionCookie(result.token, true),
     /^ripy_session=.+; Max-Age=43200; Path=\/; HttpOnly; SameSite=Strict; Secure$/);
+});
+
+test('loopback reverse proxy supplies trusted HTTPS for login and secure cookies', async (t) => {
+  const { app } = await fixture(t, { trustProxy: ['127.0.0.1', '::1'] });
+  const response = await app.inject({
+    method: 'POST',
+    url: '/auth/login',
+    headers: {
+      'content-type': 'application/x-www-form-urlencoded',
+      host: 'cinema.example',
+      origin: 'https://cinema.example',
+      'x-forwarded-proto': 'https'
+    },
+    payload: new URLSearchParams({ password: 'correct horse battery staple' }).toString()
+  });
+  assert.equal(response.statusCode, 303);
+  assert.match(response.headers['set-cookie'], /; Secure$/);
 });
 
 test('password gate protects page, assets, APIs, media, ICE and room websocket', async (t) => {

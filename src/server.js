@@ -94,14 +94,16 @@ export async function buildServer({
   adminPassword = undefined,
   adminSessionTtlMs = 60 * 60 * 1000,
   mediaUploadMaxBytes = defaultUploadMaxBytes,
-  voiceIceConfiguration = readVoiceIceConfiguration()
+  voiceIceConfiguration = readVoiceIceConfiguration(),
+  trustProxy = false
 } = {}) {
-  let app;
+  let fastifyOptions;
   if (https === undefined) {
-    app = Fastify({ logger });
+    fastifyOptions = { logger, trustProxy };
   } else {
-    app = Fastify({ logger, https });
+    fastifyOptions = { logger, trustProxy, https };
   }
+  const app = Fastify(fastifyOptions);
   const access = createAccessControl({ password: accessPassword, now, sessionTtlMs: accessSessionTtlMs });
   const adminAccess = createAccessControl({
     password: adminPassword,
@@ -110,7 +112,7 @@ export async function buildServer({
     sessionTtlMs: adminSessionTtlMs
   });
   const authorizer = createRequestAuthorizer({ viewerAccess: access, adminAccess });
-  const secureCookies = https !== undefined;
+  const secureCookie = (request) => request.protocol === 'https';
   if (access.enabled) {
     app.addContentTypeParser('application/x-www-form-urlencoded',
       { parseAs: 'string', bodyLimit: 2048 }, (_request, body, done) => {
@@ -185,7 +187,7 @@ export async function buildServer({
       switch (result.status) {
         case 'authenticated':
           return loginHeaders(reply)
-            .header('set-cookie', access.sessionCookie(result.token, secureCookies))
+            .header('set-cookie', access.sessionCookie(result.token, secureCookie(request)))
             .code(303).header('location', '/').send();
         case 'limited':
           return loginHeaders(reply).header('retry-after', String(result.retryAfterSeconds))
@@ -204,7 +206,7 @@ export async function buildServer({
       return reply.code(404).send({ error: 'Password access is not configured.' });
     } else {
       access.logout(request.headers.cookie);
-      return reply.header('set-cookie', access.expiredCookie(secureCookies))
+      return reply.header('set-cookie', access.expiredCookie(secureCookie(request)))
         .code(303).header('location', '/login').send();
     }
   });
@@ -221,7 +223,7 @@ export async function buildServer({
     library,
     authorizer,
     adminAccess,
-    secureCookies,
+    secureCookie,
     sameOrigin,
     mediaDeleted(mediaId) {
       const next = clearDeletedMedia(context.room, mediaId, now());

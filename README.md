@@ -162,6 +162,18 @@ share `lan-key.pem`. If installing a private CA on the other device is
 undesirable, use a real domain with Caddy/nginx and a publicly trusted
 certificate, or use a private-network service that provides trusted HTTPS.
 
+When Caddy or nginx terminates HTTPS on the same machine, keep Ripy on the
+loopback interface and explicitly trust only that loopback proxy:
+
+```sh
+HOST=127.0.0.1 TRUST_PROXY=loopback npm start
+```
+
+This mode accepts forwarded protocol information only from `127.0.0.1` or
+`::1`. Ripy then validates same-origin HTTPS requests and marks viewer and
+administrator session cookies `Secure`. Do not enable this mode when an
+untrusted process or remote host can connect directly to Ripy's listening port.
+
 The shared-password gate has no accounts or database. Media sessions and the catalog are held in memory, while completed movies remain in the configured media directory. There is no Lain integration, transcoding, resumable upload, or public deployment in this example.
 
 ## Manage the movie library

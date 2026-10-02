@@ -37,7 +37,7 @@ export function installMediaManagement(app, {
   library,
   authorizer,
   adminAccess,
-  secureCookies,
+  secureCookie,
   sameOrigin,
   mediaDeleted
 }) {
@@ -128,7 +128,7 @@ export function installMediaManagement(app, {
       const result = adminAccess.login(password, request.ip);
       switch (result.status) {
         case 'authenticated':
-          return reply.header('set-cookie', adminAccess.sessionCookie(result.token, secureCookies))
+          return reply.header('set-cookie', adminAccess.sessionCookie(result.token, secureCookie(request)))
             .header('cache-control', 'no-store').send({ authenticated: true });
         case 'limited':
           return reply.code(429).header('retry-after', String(result.retryAfterSeconds))
@@ -148,7 +148,7 @@ export function installMediaManagement(app, {
       return reply.code(403).send({ error: 'Cross-origin administrator logout is not allowed.' });
     } else {
       adminAccess.logout(request.headers.cookie);
-      return reply.header('set-cookie', adminAccess.expiredCookie(secureCookies))
+      return reply.header('set-cookie', adminAccess.expiredCookie(secureCookie(request)))
         .header('cache-control', 'no-store').code(204).send();
     }
   });
